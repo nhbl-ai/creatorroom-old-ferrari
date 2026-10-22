@@ -1,6 +1,6 @@
 # CreatorRoom — brief để thảo luận và triển khai
 
-Ngày: 22/10/2026 · Phiên bản: 0.3 · Trạng thái: code local đã triển khai; chờ nghiệm thu Tide thật, tunnel tạm hoãn theo yêu cầu.
+Ngày: 22/10/2026 · Phiên bản: 0.4 · Trạng thái: code local đã triển khai; chờ nghiệm thu Tide thật, tunnel tạm hoãn theo yêu cầu.
 
 File giữ tên `brif.md` theo yêu cầu. Đây là đầu bài cho lần triển khai tiếp theo, không phải báo cáo rằng các chức năng bên dưới đã hoàn thành. Khi quyết định thay đổi, cập nhật file này trước khi triển khai phần phụ thuộc.
 
@@ -199,3 +199,5 @@ Giới hạn công khai đã thu hẹp: tunnel không chuyển tiếp bất kỳ
 Người dùng chọn tự kiểm thử Tide thật sau. Không chờ thao tác enclave để đẩy các thay đổi local đã kiểm thử; không đánh dấu checklist network là hoàn tất. Xem `docs/SHARING.md` cho thao tác local và kế hoạch khôi phục tunnel.
 
 Kiểm tra cuối phát hiện realm tắt self-registration. Đã thêm nút Create account qua SDK, bật default required action liên kết Tide và tạo đúng request `setRegistrationAllowed=true`. Request này cần admin nhóm ký tại Approvals/Tide governance; tài khoản mới chưa tự đăng ký được trước khi duyệt. Không tự ký thay người dùng.
+
+Kiểm thử thật tiếp theo: đăng ký đã bật và admin đăng nhập được trong Chrome profile riêng. Một member mới đã được tạo nhưng chưa có Tide key/attestation; bấm đăng ký lặp trong cùng phiên gây lỗi different user. Đã bổ sung admin-assisted account linking trong Approvals: ADOPT_USER → tideInvitable → private required-action link → member tự hoàn tất trong browser. Không cấp member realm admin, không tự ký thay người dùng và không dùng fixture làm bằng chứng network. Tài khoản mới chưa được coi là sẵn sàng upload cho tới khi liên kết Tide hoàn tất.

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, send } from "../lib/api.js";
 import { navigate } from "../lib/routing.js";
+import { prepareMemberEnrollment } from "../lib/enrollment.js";
 import { signInvitation } from "../lib/tide.js";
 import {
   adminRequest,
@@ -332,7 +333,14 @@ export function ProjectRoom({
   );
 }
 
-export function InvitationPage({ token, user, onLogin, onRegister, config, onIdentity }) {
+export function InvitationPage({
+  token,
+  user,
+  onLogin,
+  onRegister,
+  config,
+  onIdentity,
+}) {
   const [invitation, setInvitation] = useState(null),
     [error, setError] = useState(""),
     [working, setWorking] = useState(false);
@@ -419,8 +427,12 @@ export function InvitationPage({ token, user, onLogin, onRegister, config, onIde
                     ))
                 ) : (
                   <div className="landing-auth-actions">
-                    <button className="button primary" onClick={onLogin}>Sign in</button>
-                    <button className="button secondary" onClick={onRegister}>Create account</button>
+                    <button className="button primary" onClick={onLogin}>
+                      Sign in
+                    </button>
+                    <button className="button secondary" onClick={onRegister}>
+                      Create account
+                    </button>
                   </div>
                 )}
               </>
@@ -475,15 +487,29 @@ export function InvitationPage({ token, user, onLogin, onRegister, config, onIde
 export function Approvals({ config, user, onChanged }) {
   const [rows, setRows] = useState([]),
     [governance, setGovernance] = useState([]),
+    [unlinked, setUnlinked] = useState([]),
+    [enrollment, setEnrollment] = useState(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState("");
   async function load() {
     const data = await api("/approvals");
     setRows(data.approvals);
-    if (user.canSign && config.mode === "tide")
-      setGovernance(
-        await adminRequest(config, "/iga/change-requests?status=PENDING"),
+    if (user.canSign && config.mode === "tide") {
+      const changes = await adminRequest(
+        config,
+        "/iga/change-requests?status=PENDING",
       );
+      setGovernance(changes);
+      const people = await adminRequest(config, "/users?first=0&max=100");
+      setUnlinked(
+        people.filter(
+          (p) =>
+            p.enabled &&
+            !p.attributes?.tideUserKey?.[0] &&
+            !p.attributes?.tideuserkey?.[0],
+        ),
+      );
+    }
   }
   useEffect(() => {
     load().catch((e) => setError(e.message));
@@ -566,6 +592,84 @@ export function Approvals({ config, user, onChanged }) {
           Complete any Tide approval window, then return here…
         </p>
       )}
+      {user.canSign && config.mode === "tide" && (
+        <section className="governance-panel">
+          <h3>Member account linking</h3>
+          <p>
+            New registrations must be approved for Tide linking before they can
+            upload. Prepare a link for the exact member shown; this grants no
+            administrator or draft access.
+          </p>
+          {!unlinked.length && (
+            <p>No unlinked members in the first 100 accounts.</p>
+          )}
+          {unlinked.map((person) => (
+            <div className="approval-row" key={person.id}>
+              <div>
+                <strong>{person.username}</strong>
+                <small>Account: {person.id.slice(-8)} · Tide not linked</small>
+              </div>
+              <button
+                className="button secondary"
+                disabled={!!busy}
+                onClick={() =>
+                  run(`enroll-${person.id}`, async () => {
+                    setEnrollment(null);
+                    const url = await prepareMemberEnrollment(
+                      config,
+                      person.id,
+                    );
+                    setEnrollment({ username: person.username, url });
+                  })
+                }
+              >
+                Prepare Tide link
+              </button>
+            </div>
+          ))}
+          {enrollment && (
+            <div className="invite-link-box">
+              <strong>Tide link for {enrollment.username}</strong>
+              <p>
+                Open this link in that member’s browser profile. Finish Tide
+                linking there, then return to CreatorRoom and Sign in. Do not
+                open it in the administrator’s profile.
+              </p>
+              <label>
+                Private enrollment link
+                <input
+                  aria-label="Private enrollment link"
+                  readOnly
+                  value={enrollment.url}
+                  onFocus={(e) => e.target.select()}
+                />
+              </label>
+              <button
+                className="button secondary"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(enrollment.url);
+                  } catch {
+                    setError("Select and copy the private link above.");
+                  }
+                }}
+              >
+                Copy Tide link
+              </button>
+              <small>
+                Requested lifetime: 30 minutes. Keep this link private. This is
+                account linking, separate from an invitation to review a draft.
+              </small>
+              <button
+                className="text-button"
+                onClick={() => setEnrollment(null)}
+              >
+                Hide link
+              </button>
+            </div>
+          )}
+        </section>
+      )}
       {!rows.length && (
         <div className="empty-state">
           <h3>No access requests yet.</h3>
@@ -609,18 +713,20 @@ export function Approvals({ config, user, onChanged }) {
           <h3>Tide governance</h3>
           <p>
             Realm changes require your own Tide signature. Review each change in
-            the enclave before approving. For first-time member registration, finish
-            the pending realm configuration that enables registrationAllowed, then
-            check the Create account flow. New users must link their Tide account.
+            the enclave before approving. For first-time member registration,
+            finish the pending realm configuration that enables
+            registrationAllowed, then check the Create account flow. New users
+            must link their Tide account.
           </p>
           {!governance.length && <p>No pending governance changes.</p>}
           {governance.map((row) => (
             <div className="approval-row" key={row.id}>
               <div>
                 <strong>{row.actionType}</strong>
-                {row.rows?.some((r) => r.key === "setRegistrationAllowed" && r.value === "true") && (
-                  <p>Enable browser account registration</p>
-                )}
+                {row.rows?.some(
+                  (r) =>
+                    r.key === "setRegistrationAllowed" && r.value === "true",
+                ) && <p>Enable browser account registration</p>}
                 <small>
                   {row.entityType} · {row.authorizationCount ?? "?"}/
                   {row.threshold} signed

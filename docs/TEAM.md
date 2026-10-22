@@ -17,7 +17,7 @@ Các bạn không cần realm riêng để sửa giao diện/test demo. Với Ti
 
 Project room và deep link; hồ sơ display name; mỗi member tạo project của mình; upload chờ policy/tiếp tục/hủy; link mời một lần theo draft; owner xác nhận mã tài khoản; queue admin ký; encrypted feedback; storage inspector; JWT/DPoP và proxy chặn admin public.
 
-16 bài API/security và 3 bài browser demo đã qua; build thành công, Tide Doctor OK (15 pass, 1 warning cho request bật signup đang chờ ký). Các fixture và persona demo không chứng minh mã hóa thật giữa hai Tide users. User chọn tự thử enclave sau. Trước signup mới, admin cần duyệt request bật registration trong Approvals; default action liên kết Tide đã bật. Xem [VALIDATION.md](VALIDATION.md).
+20 bài API/security/orchestration và 3 bài browser demo đã qua; build thành công, Tide Doctor OK (16 pass, không còn request bật signup đang chờ ký). Các fixture và persona demo không chứng minh mã hóa thật giữa hai Tide users. User chọn tự thử enclave sau. Registration đã bật; member mới chưa linked cần admin chuẩn bị Tide link trong Approvals → Member account linking. Xem phần khôi phục trong TIDECLOAK.md. Xem [VALIDATION.md](VALIDATION.md).
 
 ## Đầu việc còn lại để nhóm nhận
 

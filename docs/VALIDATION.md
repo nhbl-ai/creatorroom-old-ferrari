@@ -74,3 +74,12 @@ Record the realm/network build, date, operator, success/failure, and evidence wi
 | Wrong user and wrong record refused by network | Pending | |
 | Operator cannot decrypt, even given ciphertext | Pending | |
 | Policy expiry enforced by network | Pending | |
+
+
+## Follow-up: live member registration and account linking
+
+User confirmed successful administrator sign-in in a fresh Chrome profile. Registration enablement is now applied and there are no pending change requests at the diagnostic checkpoint. A newly registered member exists but has no Tide link/key and is not committed according to `/tideAdminResources/users/{id}/committed`. Logs also reported a missing replayable VVK signature for that user's `user_identity`. A repeat registration POST produced "already authenticated as different user"; this is not evidence that account linking succeeded.
+
+Added **Member account linking** to admin Approvals: adopt the selected uncommitted user, apply `tideInvitable=true` under governance, then obtain a time-limited private account-link URL. All approvals use the admin's browser/DPoP identity; no backend signer, member admin role, service-account approval, blanket pending-request drain, or public admin proxy. The helper refuses existing member changes, unexpected newly created changes, unapplied quorum and external action-token URLs. Link tokens remain in component memory, not localStorage, app data or logs. The admin helper now handles both JSON governance responses and text invitation URLs.
+
+Four additional orchestration tests cover safe ordering/no role grants, leaving pre-existing/unrelated requests untouched, rejecting unexpected actions and refusing a link from another origin. These use fixtures and do not prove real adoption/enrollment signatures. Total API/security/orchestration suite: 20 tests. Existing three demo browser workflows remain separate from live acceptance. Actual member adoption, Tide linking, upload and reviewer round-trip remain pending the user's enclave interaction.

@@ -26,15 +26,27 @@ export async function adminRequest(config, path, method = "GET", body) {
       cache: "no-store",
     },
   );
-  const value = await response.json().catch(() => ({}));
+  // The enrollment endpoint returns a text URL; governance returns JSON.
+  const raw = await response.text();
+  let value;
+  try {
+    value = raw ? JSON.parse(raw) : {};
+  } catch {
+    value = raw;
+  }
   if (!response.ok) {
     const error = new Error(
-      `Tide could not complete this operation (${response.status}). ${typeof value.error === "string" ? value.error.slice(0, 160) : "Check the pending governance requests."}`,
+      `Tide could not complete this operation (${response.status}). ${typeof value?.error === "string" ? value.error.slice(0, 160) : "Check the pending governance requests."}`,
     );
     error.status = response.status;
     throw error;
   }
-  if (response.status === 202 && value && !Array.isArray(value)) {
+  if (
+    response.status === 202 &&
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  ) {
     const location = response.headers.get("Location");
     value.changeRequestId ||= location?.split("/").filter(Boolean).pop();
     value.pendingGovernance = true;

@@ -10,7 +10,7 @@
 
 **Why TideCloak matters.** The real adapter uses SDK authentication, server-verified JWTs, strict DPoP and signed `RelationshipAttestation:1` policies bound to a recipient's Tide key and a draft ID. A group administrator approves policy requests using their own browser session; ordinary project owners are not realm administrators.
 
-**Prototype & storytelling.** Local automated tests cover project creation, profiles, upload, one-use invitations, owner confirmation, approvals, encrypted review, forbidden reads and operator ciphertext inspection. Demo identities and shared browser keys are simulated. The local Tide realm and login entry are available; new-member registration enablement, real enclave signing and encryption between separate Tide users remain pending human acceptance. Multi-device HTTPS is deferred until the host changes networks.
+**Prototype & storytelling.** Local automated tests cover project creation, profiles, upload, one-use invitations, owner confirmation, approvals, encrypted review, forbidden reads and operator ciphertext inspection. Demo identities and shared browser keys are simulated. The local Tide realm and login entry are available; admin-assisted member linking, real enclave signing and encryption between separate Tide users remain pending human acceptance. Multi-device HTTPS is deferred until the host changes networks.
 
 ## Run the local demo
 

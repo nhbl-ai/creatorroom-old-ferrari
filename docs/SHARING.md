@@ -8,7 +8,7 @@ Chỉ máy host cần Node/Docker. Người dùng cuối đăng ký hoặc đăn
 
 ## Setup một lần trước khi có thành viên mới
 
-Admin đăng nhập tài khoản hiện có, mở **Approvals → Tide governance**. Request `SET_REALM_CONFIG` có nhãn **Enable browser account registration** đang chờ ký. Bấm Review in Tide, kiểm tra đúng `setRegistrationAllowed=true` và phê duyệt trong enclave. Default action liên kết Tide đã bật. Khi chưa duyệt, nút Create account có thể bị realm từ chối; đây chưa phải luồng signup đã nghiệm thu. Xem `TIDECLOAK.md` để cấu hình realm mới.
+Admin đã duyệt bật đăng ký. Thành viên bấm Create account để tạo tài khoản realm; sau đó cần hoàn tất liên kết Tide. Nếu tài khoản đã tồn tại nhưng chưa liên kết, admin vào **Approvals → Member account linking → Prepare Tide link**, ký đúng các bước adoption/invitable, rồi copy link riêng cho người dùng mở trong profile của họ. Không tạo lại account hoặc dùng danh tính Tide admin cho member. Xem `TIDECLOAK.md` để biết bước khôi phục đầy đủ.
 
 ## Thử ngay trên máy host
 

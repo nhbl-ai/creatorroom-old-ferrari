@@ -90,9 +90,22 @@ Một người có quyền quản trị Tide có thể đề nghị tự cấp q
 
 Landing và trang lời mời có hai hành động riêng: **Continue with TideCloak / Sign in** và **Create account**. Nút Create account dùng `getTideCloakClient().register()` của SDK, giữ route lời mời để quay lại sau đăng ký; app không nhận mật khẩu.
 
-Realm local hiện đã bật default required action `link-tide-account-action` cho tài khoản mới. Thay đổi `setRegistrationAllowed=true` đang chờ quản trị nhóm ký trong **Approvals → Tide governance → SET_REALM_CONFIG → Review in Tide**. Kiểm tra enclave hiển thị đúng bật đăng ký rồi duyệt. Đây là bước setup một lần, cần hoàn tất trước khi mời tài khoản mới; hiện đăng nhập của tài khoản đã có vẫn hoạt động.
+Realm local hiện đã bật default required action `link-tide-account-action` cho tài khoản mới. Người dùng đã phê duyệt `setRegistrationAllowed=true`; đăng ký realm hiện được bật. Đây chưa phải bằng chứng hoàn thành liên kết Tide cho thành viên mới.
 
 Ở realm khác, admin bật **Realm settings → Login → User registration**, đảm bảo **Authentication → Required actions → link-tide-account-action** enabled và default, rồi hoàn tất đúng governance request. Không cấp role admin mặc định cho người đăng ký. Hãy thử nút Create account bằng browser profile mới, hoàn thành đăng ký realm và liên kết danh tính Tide trong browser; sau đó quay lại app để chọn display name. Người dùng đã có tài khoản dùng Sign in, không tạo lại.
+
+### Hoàn tất liên kết cho tài khoản mới đã được tạo
+
+Kiểm thử thật cho thấy tài khoản tự đăng ký có thể tồn tại nhưng chưa có `tideUserKey` và chưa có attestation `user_identity`. Required action mặc định chưa đủ để coi onboarding hoàn tất. Không đăng ký lại hoặc dùng danh tính Tide admin để gắn vào member.
+
+1. Admin mở `http://localhost:3000/#/approvals`, phần **Member account linking**.
+2. Tìm đúng username/mã tài khoản, bấm **Prepare Tide link**.
+3. Browser admin đề nghị `ADOPT_USER` nếu chưa committed, phê duyệt bằng chính phiên admin; sau đó cấp thuộc tính `tideInvitable=true` qua IGA và chờ áp dụng. Đây không cấp realm admin hoặc quyền đọc draft.
+4. Nếu có change request của member đã tồn tại hoặc còn chờ quorum, hoàn tất đúng request trong **Tide governance** rồi bấm Prepare Tide link lại. Code không duyệt yêu cầu tồn đọng hoặc thay đổi không đúng phạm vi.
+5. Bấm **Copy Tide link**, mở link trong browser profile của member, hoàn tất tạo/liên kết danh tính Tide riêng. Link nhạy cảm, yêu cầu hạn 30 phút, chỉ giữ trong bộ nhớ UI; không gửi log/repo hoặc mở trong profile admin.
+6. Khi hiện account linked, quay lại app, bấm **Continue with TideCloak** để đăng nhập member đã liên kết; không bấm Create account lần nữa.
+
+Danh sách admin đọc tối đa 100 user đầu tiên cho demo. Luồng chuẩn bị link có test orchestration với fixture; ký/adopt/link thực tế vẫn cần người dùng nghiệm thu. Nếu gặp `different_user_authenticated` hoặc "already authenticated as different user", dùng đúng profile của account và bắt đầu từ app/link mới, không refresh POST đăng ký cũ. Không xóa tài khoản/dữ liệu để vượt lỗi.
 
 ## 6. Export adapter và nối với CreatorRoom
 
@@ -116,7 +129,7 @@ Không truyền `--demo`. Khi adapter chưa tồn tại ứng dụng hiện tran
 
 Dùng ba browser profile riêng cho owner A, member B và operator; thêm phiên admin nhóm nếu A không phải admin. Đừng dùng nút đổi persona demo để chứng minh Tide thật.
 
-1. A đăng nhập/đăng ký qua browser, lưu display name, refresh kiểm tra tên còn.
+1. A đăng ký qua browser; nếu chưa liên kết Tide, admin chuẩn bị link theo mục trên, A hoàn tất liên kết trong profile riêng rồi Sign in. Lưu display name, refresh kiểm tra tên còn.
 2. A tạo project P: card mở được, sửa metadata và refresh URL project được.
 3. A upload ảnh nhỏ. Thành viên thường tạo reservation + policy request rồi thấy trạng thái chờ; **bytes file chưa được gửi lên server**. Admin nhóm vào Approvals và phê duyệt các bước Tide.
 4. A chọn **Continue upload**, chọn lại file cùng MIME/kích thước. Browser refresh credential, dùng policy đã duyệt để mã hóa rồi gửi ciphertext. Mở lại draft và xác nhận giải mã được. Admin tự upload có thể ký policy của mình ngay trong luồng.
