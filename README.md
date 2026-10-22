@@ -1,55 +1,113 @@
 # Project overview
 
-**CreatorRoom** is a collaboration workspace for unreleased creative work, where creators share selected drafts with specific reviewers without giving the platform universal access to their content.
+**CreatorRoom** is a workspace for sharing unreleased creative drafts with selected reviewers while keeping original files and feedback encrypted before upload.
 
-**Vision & originality.** We focus on a small creative team's draft-review workflow: one project, selected assets, invited reviewers, and feedback. The intended experience keeps collaboration convenient while separating platform administration from access to unreleased work.
+**Vision & originality.** A small creative team can create projects, invite a fresh pair of eyes to one draft, and discuss it in a focused review room. Decorative project covers let the workspace feel visual without publishing protected previews.
 
-**Trust constraint.** Creators often have to trust a hosting service with readable copies of valuable drafts. We aim to let the service coordinate reviews while protected content remains encrypted and readable only through an authorised recipient's decryption flow.
+**Trust constraint.** Ordinary collaboration services can become universal readers of unreleased work. CreatorRoom separates project coordination from decryption: the application stores ciphertext, and the intended Tide deployment authorises each recipient for each draft.
 
-**Value & impact.** A student designer could share a poster draft with an external reviewer while keeping another project's assets private. The reviewer can contribute feedback without receiving access to the creator's entire portfolio.
+**Value & impact.** A student designer can ask an external reviewer for feedback on a poster without opening another project's work. Review comments are encrypted too, since feedback can reveal as much as the draft itself.
 
-**Why TideCloak matters.** The planned integration uses TideCloak identity and supported encrypted-data access mechanisms to bind content access to authorised reviewers. Authentication alone will not be presented as end-to-end encryption. Recipient scoping, operator visibility, and any future-access withdrawal must be verified against the actual integration.
+**Why TideCloak matters.** The implemented Tide adapter uses real SDK authentication, server-side JWT verification, and signed `RelationshipAttestation:1` policies bound to a recipient's Tide key and an asset ID. The prototype creator also acts as the Tide realm admin who approves policies in the browser. This path still requires enrollment, a compatible network, and live acceptance testing.
 
-**Prototype & storytelling.** This repository currently contains the project brief and collaboration scaffold; a working application and TideCloak integration are not implemented yet. The target demo shows an invited reviewer opening one draft, failing to open another project's asset, and an operator seeing ciphertext in storage.
+**Prototype & storytelling.** The local demo runs end to end: upload, invite, review, reject another asset, and inspect ciphertext as an operator. Its identities and browser-local keys are explicitly simulated, not Tide protection. API checks and browser tests pass; a live Tide encryption round has not yet been verified.
 
-## Team
+## Run the local demo
 
-- **HCMUS - Old Ferrari**, RMIT Saigon South (SGS)
-- RMIT Hackathon 2026 — Challenge 2, UNLOCKED
-- Submission team name: `RMIT_SGS_HCMUS - Old Ferrari_C2`
-
-## Setup
-
-There is no runnable application yet. Do not expect `npm install` or `npm run dev` to work until the application scaffold is added.
-
-Clone the repository, then read [the MVP brief](docs/MVP.md) and [the collaboration guide](CONTRIBUTING.md).
+Requires **Node.js 22.12+**. No Docker or Tide account is needed for this development mode.
 
 ```bash
 git clone https://github.com/nhbl-ai/creatorroom-old-ferrari.git
 cd creatorroom-old-ferrari
+npm ci
+npm run demo
 ```
 
-Suggested starting point: the [official TideCloak Quickstart](https://docs.tide.org/get-started/Tidecloak%20Quickstart), which scaffolds a Next.js client/server application. Confirm the current prerequisites and complete Tide enrollment before building on the template. Keep generated credentials outside version control.
+Open **http://localhost:3000** in one browser/profile:
 
-## Repository layout
+1. Enter as **Alex Morgan · creator** and click **Load sample workspace**.
+2. Open **Poster exploration — v01**, select **People & access**, and invite **Jamie Chen**.
+3. Close the room. Use **Demo identity** in the top bar to switch to Jamie.
+4. Open the invited draft and leave feedback. Try **Brand study — v01**: access is denied.
+5. Switch to **Platform operator** to inspect ciphertext. Its direct draft-opening API is denied too.
 
-- `src/` — reserved for application source once the stack is scaffolded.
-- `docs/MVP.md` — user journey, integration questions, and acceptance checklist.
-- `docs/TEAM.md` — workstreams for teammates to claim.
-- `assets/` — synthetic or team-owned demo assets only.
-- `demo/` — final two-minute MP4 and demo notes.
+You can also create projects and upload PNG, JPEG, WebP or TXT files up to 1 MB.
 
-The application scaffold may adjust this layout to match its framework conventions.
+![Creator workspace](docs/creator-workspace.png)
 
-## Submission checklist
+### What local demo mode means
 
-- [ ] Working prototype with real TideCloak integration.
-- [ ] Verify reviewer scoping and ciphertext storage; document limitations.
-- [ ] Update the Project overview to describe only demonstrated behaviour; keep it at 300 words or fewer.
-- [ ] Add tested installation and run instructions.
-- [ ] Add a two-minute `.mp4` under 100 MB inside this public repository.
-- [ ] Submit the repository URL through the [official Google Form](https://forms.gle/HRHYjnqB86j1LFS97).
+Demo sessions are simulated. WebCrypto AES-GCM keys are held in browser IndexedDB, shared by all demo personas in that browser. Server records contain ciphertext, but this harness is **not a security boundary between demo users**. Use synthetic work only. A different browser has no copy of these demo keys. The demo server binds loopback and cannot run with `--production`.
 
-Vietnam deadline recorded in the verified event brief: **22 October 2026, 18:00 (UTC+7)**. Publishing this repository does not submit the entry.
+## Connect real TideCloak
 
-Challenge: [Tide UNLOCKED](https://tide.org/unlocked/). Technical reference: [TideCloak documentation](https://docs.tide.org/).
+Follow **[the step-by-step Vietnamese setup guide](docs/TIDECLOAK.md)**. It includes Docker Compose, realm enrollment, the three accounts, client configuration and the live acceptance checks.
+
+After placing the public adapter in ignored `data/tidecloak.json` and configuring `.env`:
+
+```bash
+npm run dev
+```
+
+Without an adapter, this command shows setup instructions and fails closed for protected APIs. It does not silently use demo identities.
+
+```bash
+npm run build
+npm start
+```
+
+The production command requires real Tide configuration. This is a hackathon prototype: complete the live tests and review deployment requirements before hosting it for real users.
+
+## Validation
+
+```bash
+npm test
+npm run build
+```
+
+Browser tests use a dedicated port and separate test data. Install Chromium once:
+
+```bash
+# macOS / Linux
+PLAYWRIGHT_BROWSERS_PATH=.cache/ms-playwright npx playwright install chromium
+npm run test:e2e
+```
+
+```powershell
+# Windows PowerShell
+$env:PLAYWRIGHT_BROWSERS_PATH = Join-Path (Get-Location) '.cache/ms-playwright'
+npx playwright install chromium
+npm run test:e2e
+```
+
+See **[validation results and limits](docs/VALIDATION.md)**. Passing local tests does not prove a live Tide network integration.
+
+## Architecture and team handoff
+
+| Area | Files |
+|---|---|
+| React review workspace | `src/App.jsx`, `src/styles.css` |
+| Browser encryption and Tide policy signing | `src/lib/crypto.js`, `src/lib/tide.js` |
+| Express API and per-asset invitations | `server/app.js` |
+| Demo sessions and real JWT verification | `server/auth.js` |
+| Atomic single-process JSON store | `server/store.js` |
+| SDK policy parser bundled for Node | `server/tide-policy-runtime.js`, `scripts/build-policy-runtime.mjs` |
+| API and browser checks | `tests/` |
+
+Runtime files are under ignored `data/`; generated bundles, browsers and test state are under ignored `.cache/`. Do not run multiple app processes against the same JSON store. Project names, asset metadata and audit metadata are visible to signed-in workspace users; original file contents and feedback are encrypted. Audit records are ordinary app logs, not a tamper-proof ledger.
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md), [the current MVP scope](docs/MVP.md), and [workstreams for teammates](docs/TEAM.md). Removing an invitation stops subsequent API access; a saved Tide policy can work until expiry and already-read plaintext cannot be recalled. DPoP and a separate admin/quorum workflow are not implemented.
+
+## Team and submission
+
+**HCMUS - Old Ferrari — RMIT SGS**, RMIT Hackathon 2026, Challenge 2. Submission team name (preserved from the team's README): `RMIT_SGS_HCMUS - Old Ferrari_C2`.
+
+- [x] Public source repository and a runnable local prototype.
+- [ ] Configure TideCloak and verify the real sign/encrypt/share/decrypt/refuse flow.
+- [ ] Record the two-minute `.mp4` under 100 MB inside `demo/`.
+- [ ] Update the overview with verified final behaviour, keeping it at 300 words or fewer.
+- [ ] Submit the repo URL through the [official form](https://forms.gle/HRHYjnqB86j1LFS97).
+
+Recorded Vietnam deadline: **22 October 2026, 18:00 (UTC+7)**. Publishing this repository alone does not submit the entry.
+
+[Challenge brief](https://tide.org/unlocked/) · [TideCloak docs](https://docs.tide.org/) · [Third-party notices](THIRD_PARTY_NOTICES.md)

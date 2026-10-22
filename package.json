@@ -1,0 +1,36 @@
+{
+  "name": "creatorroom",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "predev": "node scripts/build-policy-runtime.mjs",
+    "dev": "node --env-file-if-exists=.env server/index.js",
+    "demo": "node --env-file-if-exists=.env server/index.js --demo",
+    "build": "node scripts/build-policy-runtime.mjs && vite build",
+    "prestart": "node scripts/build-policy-runtime.mjs",
+    "start": "node --env-file-if-exists=.env server/index.js --production",
+    "pretest": "node scripts/build-policy-runtime.mjs",
+    "test": "node --test tests/*.test.js",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@tidecloak/js": "0.14.41",
+    "@tidecloak/verify": "0.14.33",
+    "@tideorg/js": "0.14.29",
+    "express": "5.3.0",
+    "heimdall-tide": "0.14.41",
+    "lucide-react": "1.61.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@vitejs/plugin-react": "6.1.2",
+    "esbuild": "0.28.2",
+    "vite": "8.3.5"
+  }
+}

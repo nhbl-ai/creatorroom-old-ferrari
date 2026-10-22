@@ -14,7 +14,7 @@ Không gian cộng tác trên tác phẩm chưa công bố: creator mời review
 - Rút quyền truy cập tương lai là phần mở rộng sau khi xác minh cơ chế hỗ trợ; không che giới hạn bằng cách buộc reviewer đăng nhập lại.
 - Không làm video streaming, watermark/DRM, thanh toán hoặc train model trong MVP đầu tiên.
 
-## Tích hợp cần xác minh trước khi xây UI đầy đủ
+## Tích hợp Tide cần xác minh trên realm thật
 
 1. Template và Tide enrollment hoạt động.
 2. Một payload được mã hóa và mở bởi phiên người dùng hợp lệ.
@@ -55,4 +55,10 @@ Chỉ có consent hoặc ACL trong DB ứng dụng chưa chứng minh operator k
 - 95–110 giây: operator kiểm tra storage; chỉ thấy ciphertext.
 - 110–120 giây: giải thích giá trị và giới hạn đã kiểm chứng.
 
-Hiện chưa có application code, TideCloak integration hoặc kết quả kiểm thử. Cập nhật tài liệu này theo kết quả thực tế.
+## Trạng thái triển khai
+
+Đã có application code React/Vite + Express, local demo chạy xuyên suốt, kiểm thử API/JWT và trình duyệt. Code Tide dùng SDK thật và policy `RelationshipAttestation:1` theo người nhận/asset; **chưa chạy với realm thật**. Xem `TIDECLOAK.md` để setup và `VALIDATION.md` để phân biệt bằng chứng đã có với việc còn lại.
+
+Trong MVP tích hợp, creator phải kiêm Tide admin để phê duyệt policy trong browser. Reviewer được cấp quyền crypto đọc và ghi của đúng record vì nhận xét cũng được mã hóa; API chỉ cho creator ghi bản gốc. Thời hạn lời mời là 1 hoặc 24 giờ. Xóa lời mời chặn các lượt API sau đó; không thu hồi chắc chắn policy đã sao chép trước expiry.
+
+Các checkbox ở trên là mục tiêu nghiệm thu Tide thật, không tự đánh dấu hoàn thành từ local demo.

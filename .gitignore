@@ -6,6 +6,9 @@ dist/
 build/
 coverage/
 .turbo/
+.cache/
+test-results/
+playwright-report/
 *.tsbuildinfo
 
 # Local configuration and credentials
