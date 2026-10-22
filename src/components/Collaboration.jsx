@@ -502,9 +502,12 @@ export function Approvals({ config, user, onChanged }) {
       setGovernance(changes);
       const people = await adminRequest(config, "/users?first=0&max=100");
       setUnlinked(
+        // Keep disabled accounts: a pending CREATE_USER/ADOPT_USER disables the
+        // member until it is committed, and the admin must still approve it.
         people.filter(
           (p) =>
-            p.enabled &&
+            !p.serviceAccountClientId &&
+            !p.username?.startsWith("service-account-") &&
             !p.attributes?.tideUserKey?.[0] &&
             !p.attributes?.tideuserkey?.[0],
         ),
@@ -607,7 +610,12 @@ export function Approvals({ config, user, onChanged }) {
             <div className="approval-row" key={person.id}>
               <div>
                 <strong>{person.username}</strong>
-                <small>Account: {person.id.slice(-8)} · Tide not linked</small>
+                <small>
+                  Account: {person.id.slice(-8)} ·{" "}
+                  {person.enabled
+                    ? "Tide not linked"
+                    : "Waiting for admin approval"}
+                </small>
               </div>
               <button
                 className="button secondary"
@@ -623,7 +631,7 @@ export function Approvals({ config, user, onChanged }) {
                   })
                 }
               >
-                Prepare Tide link
+                {person.enabled ? "Prepare Tide link" : "Approve & prepare link"}
               </button>
             </div>
           ))}
@@ -723,9 +731,18 @@ export function Approvals({ config, user, onChanged }) {
             <div className="approval-row" key={row.id}>
               <div>
                 <strong>{row.actionType}</strong>
+                {row.entityType === "USER" && row.entityId && (
+                    <p>
+                      Member:{" "}
+                      {unlinked.find((p) => p.id === row.entityId)?.username ||
+                        row.rows?.[0]?.USERNAME ||
+                        row.entityId.slice(-8)}
+                    </p>
+                  )}
                 {row.rows?.some(
                   (r) =>
-                    r.key === "setRegistrationAllowed" && r.value === "true",
+                    (r.key ?? r.KEY) === "setRegistrationAllowed" &&
+                    String(r.value ?? r.VALUE) === "true",
                 ) && <p>Enable browser account registration</p>}
                 <small>
                   {row.entityType} · {row.authorizationCount ?? "?"}/

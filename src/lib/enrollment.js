@@ -1,4 +1,23 @@
-import { adminRequest, approveGovernance } from "./tide-admin.js";
+import {
+  adminRequest,
+  approveGovernance,
+  governedChange,
+} from "./tide-admin.js";
+
+const isInvitableRow = (r) =>
+  r.NAME === "tideInvitable" && ["true", '["true"]'].includes(String(r.VALUE));
+// The only governed changes that belong to enrolling a member. CREATE_USER is
+// filed when someone registered while self-registration was still off; it must
+// be approved (not replaced by ADOPT_USER) so the account becomes committed.
+function enrollmentRow(row) {
+  if (["CREATE_USER", "ADOPT_USER"].includes(row.actionType)) return true;
+  return (
+    row.actionType === "SET_USER_ATTRIBUTE" &&
+    (row.rows || []).length > 0 &&
+    row.rows.every(isInvitableRow)
+  );
+}
+const enrollmentRank = (row) => (row.actionType === "SET_USER_ATTRIBUTE" ? 1 : 0);
 
 // Supported IGA adoption + Tide account-link flow. The admin browser proposes
 // and approves with its own DPoP-bound session; no master credentials or roles
@@ -14,51 +33,26 @@ export async function prepareMemberEnrollment(
   const user = await request(config, `/users/${person}`);
   if (user.attributes?.tideUserKey?.[0] || user.attributes?.tideuserkey?.[0])
     throw new Error("This member is already linked. Use Sign in.");
-  const pendingPath = "/iga/change-requests?status=PENDING";
-  async function propose(
-    path,
-    method,
-    body,
-    expectedAction,
-    validRows = () => true,
-  ) {
-    const before = await request(config, pendingPath);
-    if (before.some((r) => r.entityId === personId))
-      throw new Error(
-        "This member has a pending change. Review it in Tide governance, then prepare the link again.",
-      );
-    const beforeIds = new Set(before.map((r) => r.id));
-    await request(config, path, method, body);
-    const after = await request(config, pendingPath);
-    const created = after.filter((r) => !beforeIds.has(r.id));
-    // Never approve pre-existing requests or unexpected fields/actions.
-    for (const row of created) {
-      if (
-        row.entityId !== personId ||
-        row.actionType !== expectedAction ||
-        !validRows(row.rows || [])
-      )
-        throw new Error(
-          "Unexpected governance change; review it manually in Tide governance. No automatic approval was sent.",
-        );
-    }
-    for (const row of created) await approve(config, row.id);
-  }
-  let state = await request(
-    config,
-    `/tideAdminResources/users/${person}/committed`,
-  );
+  const deps = { request, approve, rank: enrollmentRank };
+  const committedPath = `/tideAdminResources/users/${person}/committed`;
+  let state = await request(config, committedPath);
   if (!state.committed) {
-    await propose(
-      "/iga/adopt",
-      "POST",
-      { entityType: "USER", entityId: personId },
-      "ADOPT_USER",
-    );
-    state = await request(
+    await governedChange(
       config,
-      `/tideAdminResources/users/${person}/committed`,
+      personId,
+      () =>
+        request(config, "/iga/adopt", "POST", {
+          entityType: "USER",
+          entityId: personId,
+        }),
+      enrollmentRow,
+      {
+        ...deps,
+        noChange:
+          "Tide did not file an adoption request for this member. Refresh and retry.",
+      },
     );
+    state = await request(config, committedPath);
     if (!state.committed)
       throw new Error(
         "Member adoption is waiting for quorum. Finish it in Tide governance, then retry.",
@@ -66,25 +60,28 @@ export async function prepareMemberEnrollment(
   }
   if (!state.tideInvitable) {
     const current = await request(config, `/users/${person}`);
-    await propose(
-      `/users/${person}`,
-      "PUT",
-      {
-        attributes: { ...current.attributes, tideInvitable: ["true"] },
-      },
-      "SET_USER_ATTRIBUTE",
-      (rows) =>
-        rows.length > 0 &&
-        rows.every(
-          (r) =>
-            r.NAME === "tideInvitable" &&
-            ["true", '["true"]'].includes(String(r.VALUE)),
-        ),
-    );
-    state = await request(
+    // Keycloak runs a full profile update on PUT: omitted names are cleared and
+    // omitted attributes become REMOVE_USER_ATTRIBUTE requests, so send the
+    // current representation and change only tideInvitable.
+    const body = {
+      username: current.username,
+      email: current.email,
+      firstName: current.firstName,
+      lastName: current.lastName,
+      attributes: { ...current.attributes, tideInvitable: ["true"] },
+    };
+    await governedChange(
       config,
-      `/tideAdminResources/users/${person}/committed`,
+      personId,
+      () => request(config, `/users/${person}`, "PUT", body),
+      enrollmentRow,
+      {
+        ...deps,
+        noChange:
+          "Tide did not record tideInvitable. In TideCloak enable Realm settings → User profile → Unmanaged attributes (or declare tideInvitable), then retry.",
+      },
     );
+    state = await request(config, committedPath);
     if (!state.committed || !state.tideInvitable)
       throw new Error(
         "Member enrollment permission is waiting for quorum. Finish it in Tide governance, then retry.",

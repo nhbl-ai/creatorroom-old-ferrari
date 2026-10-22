@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareMemberEnrollment } from "../src/lib/enrollment.js";
+import { ensureCryptoRoles } from "../src/lib/tide-admin.js";
 
 // Orchestration fixtures only: no real token, enclave signature or ORK acceptance.
 const config = {
@@ -13,6 +14,8 @@ const config = {
 };
 function fixture({
   existing = false,
+  createPending = false,
+  foreign = false,
   unexpected = false,
   badUrl = false,
 } = {}) {
@@ -35,12 +38,29 @@ function fixture({
       actionType: "ADOPT_USER",
       status: "PENDING",
     });
+  if (createPending)
+    pending.push({
+      id: "create",
+      entityId: "member",
+      actionType: "CREATE_USER",
+      rows: [{ ID: "member", USERNAME: "creator-a" }],
+      status: "PENDING",
+    });
+  if (foreign)
+    pending.push({
+      id: "foreign",
+      entityId: "member",
+      actionType: "REMOVE_USER_ATTRIBUTE",
+      status: "PENDING",
+    });
   const request = async (_config, path, method = "GET", body) => {
     calls.push({ path, method, body });
     if (path === "/users/member" && method === "GET")
       return {
         id: "member",
         username: "creator-a",
+        firstName: "Creator",
+        email: "a@example.test",
         attributes: { preference: ["keep"] },
       };
     if (path.endsWith("/committed"))
@@ -48,6 +68,7 @@ function fixture({
     if (path === "/iga/change-requests?status=PENDING")
       return structuredClone(pending);
     if (path === "/iga/adopt") {
+      assert.ok(!createPending, "approve CREATE_USER instead of adopting");
       pending.push({
         id: "adopt",
         entityId: "member",
@@ -62,6 +83,9 @@ function fixture({
         preference: ["keep"],
         tideInvitable: ["true"],
       });
+      // A partial PUT would clear names and file REMOVE_USER_ATTRIBUTE rows.
+      assert.equal(body.firstName, "Creator");
+      assert.equal(body.email, "a@example.test");
       pending.push({
         id: "invite",
         entityId: "member",
@@ -87,7 +111,7 @@ function fixture({
   };
   const approve = async (_config, id) => {
     approved.push(id);
-    if (id === "adopt") committed = true;
+    if (["adopt", "previous", "create"].includes(id)) committed = true;
     if (id === "invite") invitable = true;
     pending = pending.filter((r) => r.id !== id);
   };
@@ -112,12 +136,25 @@ test("member enrollment adopts, commits invitation permission and returns a priv
   assert.deepEqual(f.approved, ["adopt", "invite"]);
   assert.ok(!f.calls.some((c) => /role-mappings/.test(c.path)));
 });
-test("member enrollment leaves pre-existing and unrelated governance requests untouched", async (t) => {
+test("member enrollment resumes this member's pending adoption and leaves unrelated requests untouched", async (t) => {
   browser(t);
   const f = fixture({ existing: true });
+  await prepareMemberEnrollment(config, "member", f);
+  assert.deepEqual(f.approved, ["previous", "invite"]);
+  assert.ok(!f.calls.some((c) => c.path === "/iga/adopt"));
+});
+test("member registered before sign-up was enabled is admitted by approving CREATE_USER", async (t) => {
+  browser(t);
+  const f = fixture({ createPending: true });
+  await prepareMemberEnrollment(config, "member", f);
+  assert.deepEqual(f.approved, ["create", "invite"]);
+});
+test("member enrollment refuses when the member has an unrelated pending change", async (t) => {
+  browser(t);
+  const f = fixture({ foreign: true });
   await assert.rejects(
     prepareMemberEnrollment(config, "member", f),
-    /pending change/,
+    /another pending change/,
   );
   assert.deepEqual(f.approved, []);
   assert.ok(!f.calls.some((c) => c.method !== "GET"));
@@ -143,4 +180,58 @@ test("member enrollment never displays an action-token URL from another origin",
     prepareMemberEnrollment(config, "member", f),
     /unexpected enrollment URL/,
   );
+});
+
+// TideCloak files GRANT_ROLES inline and returns 204 with no Location.
+function roleFixture({ committed = true } = {}) {
+  const roles = ["_tide_enabled", "_tide_encryptor", "_tide_decryptor"].map(
+    (name) => ({ id: `id${name}`, name }),
+  );
+  let owned = [{ id: "d", name: "default-roles-studio" }],
+    pending = [
+      { id: "other", entityId: "someone", actionType: "GRANT_ROLES", rows: [] },
+    ],
+    n = 0;
+  const approved = [];
+  const request = async (_c, path, method = "GET", body) => {
+    if (path.endsWith("/committed")) return { committed, tideInvitable: true };
+    if (path === "/roles") return roles;
+    if (path === "/iga/change-requests?status=PENDING")
+      return structuredClone(pending);
+    if (path === "/users/member/role-mappings/realm" && method === "GET")
+      return structuredClone(owned);
+    if (path === "/users/member/role-mappings/realm" && method === "POST") {
+      assert.equal(body.length, 1);
+      pending.push({
+        id: `grant${++n}`,
+        entityId: "member",
+        actionType: "GRANT_ROLES",
+        rows: [{ USER_ID: "member", ROLE_ID: body[0].id }],
+        role: body[0],
+      });
+      return {};
+    }
+    throw new Error("Unexpected request: " + method + " " + path);
+  };
+  const approve = async (_c, id) => {
+    approved.push(id);
+    const row = pending.find((r) => r.id === id);
+    owned.push(row.role);
+    pending = pending.filter((r) => r.id !== id);
+    return { mode: "recorded", committed: true };
+  };
+  return { request, approve, approved };
+}
+test("crypto role grants are found by diffing pending requests (204 responses)", async () => {
+  const f = roleFixture();
+  await ensureCryptoRoles(config, "member", f);
+  assert.deepEqual(f.approved, ["grant1", "grant2", "grant3"]);
+});
+test("crypto roles are not granted before the member is committed", async () => {
+  const f = roleFixture({ committed: false });
+  await assert.rejects(
+    ensureCryptoRoles(config, "member", f),
+    /not linked to Tide yet/,
+  );
+  assert.deepEqual(f.approved, []);
 });
