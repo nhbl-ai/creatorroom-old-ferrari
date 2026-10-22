@@ -14,7 +14,7 @@
 
 ## Team
 
-- **Old Ferrari**, RMIT Saigon South (SGS)
+- **HCMUS - Old Ferrari**, RMIT Saigon South (SGS)
 - RMIT Hackathon 2026 — Challenge 2, UNLOCKED
 - Submission team name: `RMIT_SGS_OldFerrari_C2`
 
