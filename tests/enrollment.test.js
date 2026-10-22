@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { prepareMemberEnrollment } from "../src/lib/enrollment.js";
-import { ensureCryptoRoles } from "../src/lib/tide-admin.js";
+import {
+  approveGovernance,
+  ensureCryptoRoles,
+} from "../src/lib/tide-admin.js";
 
 // Orchestration fixtures only: no real token, enclave signature or ORK acceptance.
 const config = {
@@ -234,4 +237,49 @@ test("crypto roles are not granted before the member is committed", async () => 
     /not linked to Tide yet/,
   );
   assert.deepEqual(f.approved, []);
+});
+
+// multiAdmin /approve cannot build an enclave model for ADOPT_* ("Unknown IGA
+// action: ADOPT_USER"); TideCloak's exempt lane is authorize + commit.
+function laneFixture({ alreadySigned = false } = {}) {
+  const calls = [];
+  const request = async (_c, path, method = "GET") => {
+    calls.push(`${method} ${path}`);
+    if (path.endsWith("/authorize") && alreadySigned) {
+      const error = new Error(
+        "Tide could not complete this operation (409). Caller has already signed this change request",
+      );
+      error.status = 409;
+      throw error;
+    }
+    if (path.endsWith("/authorize")) return { status: "PENDING" };
+    if (path.endsWith("/commit"))
+      return { committed: true, changeRequestId: "adopt", status: "APPROVED" };
+    throw new Error("Unexpected request: " + method + " " + path);
+  };
+  return { request, calls };
+}
+test("ADOPT_USER is approved through authorize + commit, never the enclave /approve", async () => {
+  const f = laneFixture();
+  const result = await approveGovernance(config, "adopt", "ADOPT_USER", f);
+  assert.deepEqual(f.calls, [
+    "POST /iga/change-requests/adopt/authorize",
+    "POST /iga/change-requests/adopt/commit",
+  ]);
+  assert.equal(result.committed, true);
+});
+test("an adoption this admin already authorized is resumed by committing it", async () => {
+  const f = laneFixture({ alreadySigned: true });
+  const result = await approveGovernance(config, "adopt", "ADOPT_USER", f);
+  assert.equal(f.calls.at(-1), "POST /iga/change-requests/adopt/commit");
+  assert.equal(result.committed, true);
+});
+test("other governance actions still use the /approve lane", async () => {
+  const calls = [];
+  const request = async (_c, path, method) => {
+    calls.push(`${method} ${path}`);
+    return { mode: "recorded", committed: true };
+  };
+  await approveGovernance(config, "grant", "GRANT_ROLES", { request });
+  assert.deepEqual(calls, ["POST /iga/change-requests/grant/approve"]);
 });

@@ -60,8 +60,32 @@ export async function adminRequest(config, path, method = "GET", body) {
   }
   return value;
 }
-export async function approveGovernance(config, id) {
-  let result = await adminRequest(
+// ADOPT_* requests cannot go through /approve on a multiAdmin realm: its phase-1
+// enclave model replays the change and the replay dispatcher has no ADOPT case
+// ("Unknown IGA action: ADOPT_USER"). TideCloak exempts ADOPT_* (threshold 1,
+// no producer quorum) from the enclave rule on the authorize + commit lane, and
+// commit applies it via the ADOPT replay extension, re-enabling the account.
+async function approveAdoption(config, id, request) {
+  const path = `/iga/change-requests/${encodeURIComponent(id)}`;
+  try {
+    await request(config, `${path}/authorize`, "POST", {});
+  } catch (error) {
+    // Resuming an adoption this admin already authorized: just commit it.
+    if (error.status !== 409 || !/already signed/i.test(error.message))
+      throw error;
+  }
+  const result = await request(config, `${path}/commit`, "POST");
+  return { ...result, mode: "recorded", committed: result.committed !== false };
+}
+export async function approveGovernance(
+  config,
+  id,
+  actionType = "",
+  { request = adminRequest } = {},
+) {
+  if (actionType.startsWith("ADOPT_"))
+    return approveAdoption(config, id, request);
+  let result = await request(
     config,
     `/iga/change-requests/${encodeURIComponent(id)}/approve`,
     "POST",
@@ -69,14 +93,14 @@ export async function approveGovernance(config, id) {
   );
   if (result.mode === "needs-approval") {
     const { Models } = await import("@tideorg/js");
-    const request = fromBase64(result.requestModel);
-    const uniqueId = Models.BaseTideRequest.decode(request).getUniqueId();
+    const model = fromBase64(result.requestModel);
+    const uniqueId = Models.BaseTideRequest.decode(model).getUniqueId();
     const [approval] = await tideService()
       .getTideCloakClient()
-      .requestTideOperatorApproval([{ id: uniqueId, request }]);
+      .requestTideOperatorApproval([{ id: uniqueId, request: model }]);
     if (approval?.status !== "approved")
       throw new Error("The governance request was not approved.");
-    result = await adminRequest(
+    result = await request(
       config,
       `/iga/change-requests/${encodeURIComponent(id)}/approve`,
       "POST",
@@ -130,7 +154,7 @@ export async function governedChange(
     targets = created;
   }
   for (const row of [...targets].sort((a, b) => rank(a) - rank(b))) {
-    const result = await approve(config, row.id);
+    const result = await approve(config, row.id, row.actionType);
     if (result?.committed === false)
       throw new Error(
         `Your approval for ${row.actionType} was recorded (${result.authCount ?? "?"}/${result.threshold ?? "?"}). Waiting for other approvers in Tide governance, then retry.`,
