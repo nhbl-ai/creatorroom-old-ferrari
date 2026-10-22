@@ -1,0 +1,44 @@
+# Dependencies and generated application output
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+*service-account*.json
+tidecloak.json
+tidecloak*.json
+!tidecloak.example.json
+
+# Runtime data: protected content must not be committed here
+data/
+storage/
+uploads/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.mv.db
+*.trace.db
+
+# Local logs and editor files
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# MP4 is intentionally allowed: the challenge requires the demo in the repo.
