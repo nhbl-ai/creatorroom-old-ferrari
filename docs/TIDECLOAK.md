@@ -33,6 +33,17 @@ docker compose --env-file .env.tide.local -f docker-compose.tide.yml logs --tail
 ```
 
 Compose này chỉ khởi động dev server, không tự tạo realm, nhận điều khoản, cấp licence hoặc gán roles. Mật khẩu và volume không được commit.
+Compose có service `tidecloak-data-init` để cấp quyền ghi UID 1000 cho named volume H2 trước khi server chạy. Service init kết thúc `Exited (0)` là bình thường; service `tidecloak` phải ở trạng thái `Up`. Bước này không xóa cơ sở dữ liệu.
+
+Nếu vừa cài Docker mà PowerShell báo `docker is not recognized`, mở một PowerShell mới. Nếu terminal nằm trong app đang mở từ trước lúc cài Docker, có thể cần mở lại app đó hoặc cập nhật PATH cho riêng cửa sổ hiện tại:
+
+```powershell
+$env:Path = "$env:LOCALAPPDATA\Programs\DockerDesktop\resources\bin;$env:Path"
+docker --version
+docker compose version
+```
+
+Đường dẫn trên dành cho Docker Desktop cài per-user. Với bản all-users, dùng `C:\Program Files\Docker\Docker\resources\bin`. Thêm cả thư mục vào PATH cũng giúp Docker tìm được credential helper khi tải image.
 
 ## 3. Bootstrap realm và hoàn tất enrollment
 

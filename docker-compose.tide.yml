@@ -1,6 +1,18 @@
 services:
+  tidecloak-data-init:
+    image: tideorg/tidecloak-dev:latest
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["chown -R 1000:1000 /tide-data"]
+    volumes:
+      - tidecloak-data:/tide-data
+    restart: "no"
+
   tidecloak:
     image: tideorg/tidecloak-dev:latest
+    depends_on:
+      tidecloak-data-init:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:8080:8080"
     environment:
