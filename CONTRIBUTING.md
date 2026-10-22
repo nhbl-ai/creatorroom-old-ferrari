@@ -1,6 +1,6 @@
 # Cộng tác trong nhóm
 
-Repo dành cho CreatorRoom, Challenge 2 của nhóm Old Ferrari. Không đưa dữ liệu, notebook, checkpoint hoặc credentials của Challenge 1 vào đây.
+Repo dành cho CreatorRoom, Challenge 2 của nhóm HCMUS - Old Ferrari. Không đưa dữ liệu, notebook, checkpoint hoặc credentials của Challenge 1 vào đây.
 
 ## Thêm thành viên
 
