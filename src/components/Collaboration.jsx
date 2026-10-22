@@ -756,7 +756,9 @@ export function Approvals({ config, user, onChanged }) {
                   className="button secondary"
                   disabled={!!busy}
                   onClick={() =>
-                    run(row.id, () => approveGovernance(config, row.id))
+                    run(row.id, () =>
+                      approveGovernance(config, row.id, row.actionType),
+                    )
                   }
                 >
                   Review in Tide
