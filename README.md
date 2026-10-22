@@ -1,18 +1,59 @@
 # Project overview
 
-**CreatorRoom** lets creative teams share unreleased drafts and encrypted feedback with selected reviewers, without giving the application server a decryption key.
+**CreatorRoom** helps students, independent creators and community teams review unreleased creative work with selected people, encrypting drafts and feedback before upload.
 
-**Vision & originality.** One person can own a design project and review another. A single-use invitation opens only selected drafts; later uploads remain private. Decorative covers keep the workspace visual without publishing protected originals.
+**Vision & originality.** Getting useful feedback should not require publishing unfinished work or sharing an entire folder. CreatorRoom combines draft-specific invitations, owner confirmation and encrypted review. A member can own one project and review another; new uploads stay outside earlier invitations.
 
-**Trust constraint.** Conventional collaboration platforms can read unreleased work. CreatorRoom separates coordination from browser encryption and recipient-specific Tide policies. Project owners confirm who claimed an invitation before an approver signs access.
+**Trust constraint.** A service holding readable drafts becomes another party creators must trust. Our intended Tide deployment separates workspace administration from permission to decrypt a particular draft. Owners confirm who claimed an invitation before a separate approver signs access.
 
-**Value & impact.** A student designer can invite an external reviewer to one poster, collect feedback, and keep other drafts out of scope. Members use a browser; only the host operates Docker and TideCloak.
+**Value & impact.** A student preparing a community campaign can invite a volunteer mentor to one poster while keeping other drafts private. Independent designers and local storytellers could use the same workflow. The intended social value is wider access to feedback with understandable sharing boundaries; impact has not yet been measured.
 
-**Why TideCloak matters.** The real adapter uses SDK authentication, server-verified JWTs, strict DPoP and signed `RelationshipAttestation:1` policies bound to a recipient's Tide key and a draft ID. A group administrator approves policy requests using their own browser session; ordinary project owners are not realm administrators.
+**Why TideCloak matters.** The real adapter uses SDK authentication, server-verified JWTs, strict DPoP and signed policies scoped to a recipient's Tide key and draft ID. A group administrator approves requests in their own browser; ordinary members need no realm-admin authority. Multi-person quorum protection remains unverified.
 
-**Prototype & storytelling.** Local automated tests cover project creation, profiles, upload, one-use invitations, owner confirmation, approvals, encrypted review, forbidden reads and operator ciphertext inspection. Demo identities and shared browser keys are simulated. The local Tide realm and login entry are available; admin-assisted member linking, real enclave signing and encryption between separate Tide users remain pending human acceptance. Multi-device HTTPS is deferred until the host changes networks.
+**Prototype & storytelling.** Local tests cover projects, one-use invitations, approvals, encrypted feedback, forbidden reads and ciphertext inspection. Watch a reviewer open the invited draft and be refused another. Demo identities and browser keys are simulated. A local Tide realm and login entry are configured; member linking, real enclave signing and cross-user encryption await human acceptance. Multi-device HTTPS is deferred.
 
-## Run the local demo
+## Why this matters in practice
+
+Creative work improves through feedback, but sharing an early draft can expose more than its creator intended: an unpublished concept, a client's proposed identity, or comments explaining a campaign before it is ready. A student or a small community team should be able to ask for a second opinion without making every draft available to every collaborator.
+
+CreatorRoom starts with a narrow, useful task: **share this draft with this reviewer for this review**. The unit of collaboration is the individual draft. Feedback receives the same encryption treatment as the file because a comment can reveal its message, design or subject.
+
+| Intended users | A realistic review task | Intended benefit |
+| --- | --- | --- |
+| Students and volunteer mentors | Review a portfolio poster before a deadline | Seek outside guidance without opening unrelated drafts. |
+| Independent designers and small studios | Invite a client to comment on one proposed design | Keep access tied to the work being discussed. |
+| Community organisations | Ask a volunteer to review an unpublished campaign visual | Coordinate feedback while limiting access to campaign content. |
+| Local-language creators | Invite a trusted reader to comment on a story excerpt saved as TXT | Get human feedback in the draft's language without publishing it first. |
+
+These are proposed uses, not reports of adoption. Local-language review means people reviewing their own content; the prototype does not provide translation or automated language support. Its current file scope is PNG, JPEG, WebP and TXT, up to **1 MB per upload**.
+
+## From a draft to a useful conversation
+
+Imagine a student designing a poster for a neighbourhood arts event while another client's branding project is also in their workspace.
+
+1. **Prepare.** The student creates a project and requests upload access. In Tide mode, a separate group approver signs the policy in their own browser; the student then encrypts and uploads the draft.
+2. **Invite.** The owner selects completed drafts and creates a one-use link. The recipient signs in and claims it; the owner confirms their account identity before requesting access approval. Later uploads are not included.
+3. **Review.** After approval, the invited reviewer opens the selected draft and leaves feedback. The browser encrypts comments before upload too.
+4. **Keep the boundary.** Requests for unrelated drafts are refused by the API. A separate operator can inspect stored ciphertext but cannot open protected drafts through that API.
+5. **End the review.** Removing access blocks subsequent API requests. It cannot erase content someone has already read, and a copied Tide policy may remain usable until expiry.
+
+The local simulation covers this workflow. Separate-user decryption and operator refusal by the actual Tide network still need live acceptance testing.
+
+## What works today
+
+| Area | Current evidence | Remaining work |
+| --- | --- | --- |
+| Review workspace | Local projects, profiles, uploads, one-use invitations, owner confirmation, approvals and encrypted feedback | Observe real review sessions and improve usability. |
+| Access decisions | Server checks ownership and active draft grants; JWT and DPoP tests cover cryptographic proofs | Verify decisions alongside live Tide network enforcement. |
+| Tide setup | Local realm, adapter and login entry configured; member-linking helper implemented | Complete actual member linking, enclave approvals and cross-user encryption. |
+| Sharing | Local browser access; optional sharing proxy and setup script implemented | Verify HTTPS and two-device sign-in after the host changes networks. |
+| Social benefit | Concrete mentoring and community-review scenarios | Run a small pilot; no user-impact results are claimed. |
+
+The next proof is a live review between two independently linked Tide users, followed by failed decryption attempts from an unauthorised account and operator. See [validation results and limits](docs/VALIDATION.md).
+
+## Setup
+
+### Run the local demo
 
 Requires **Node.js 22.12+**. No Docker or Tide account is needed for this development mode.
 
@@ -39,7 +80,7 @@ Every member can create and open their own projects, edit project details and up
 
 Demo sessions are simulated. WebCrypto AES-GCM keys are held in browser IndexedDB, shared by all demo personas in that browser. Server records contain ciphertext, but this harness is **not a security boundary between demo users**. Use synthetic work only. A different browser has no copy of these demo keys. The demo server binds loopback and cannot run with `--production`.
 
-## Connect real TideCloak
+### Connect real TideCloak
 
 Follow **[the step-by-step Vietnamese setup guide](docs/TIDECLOAK.md)**. It includes Docker Compose, realm enrollment, member/approver setup, client configuration and live acceptance checks. Read [the agreed product brief](brif.md) and [local collaboration / future HTTPS sharing](docs/SHARING.md).
 
@@ -57,6 +98,21 @@ npm start
 ```
 
 The production command requires real Tide configuration. This is a hackathon prototype: complete the live tests and review deployment requirements before hosting it for real users.
+
+## A practical path to social value
+
+Our first proposed pilot is a small student design club working with volunteer mentors, using synthetic or team-owned drafts. Before involving real confidential work, complete live Tide acceptance tests and verify the separate approver workflow.
+
+The pilot should answer whether people can actually obtain feedback with less unnecessary exposure:
+
+| Question | Measure to collect |
+| --- | --- |
+| Can a first-time creator complete a review invitation? | Completion rate and time from upload to successful reviewer access. |
+| Does the workflow help people get useful feedback? | Completed reviews and creator-rated usefulness of comments. |
+| Do users understand what they are sharing? | Whether they can identify who can open each draft and what invitation removal does. |
+| Does the boundary hold in practice? | Results for wrong-user, wrong-draft, operator and expired-policy attempts. |
+
+These are evaluation measures, not achieved results. Findings would guide the next iteration: simpler onboarding, clearer access explanations and a tested approval workflow. The social goal is to make useful collaboration more accessible while giving creators understandable control over participation.
 
 ## Validation
 
@@ -80,7 +136,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-See **[validation results and limits](docs/VALIDATION.md)**. Passing local tests does not prove a live Tide network integration.
+The [validation record](docs/VALIDATION.md) documents 20 local API/security/orchestration tests and three Chromium demo workflows. These include fixtures and simulated identities; the live Tide acceptance record remains pending. Passing local tests does not prove a live Tide network integration.
 
 ## Architecture and team handoff
 
