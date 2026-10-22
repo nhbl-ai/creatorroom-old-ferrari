@@ -2615,3 +2615,55 @@ h3 {
     transition-duration: 0.01ms !important;
   }
 }
+
+.profile-name {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.profile-name:hover {
+  text-decoration: underline;
+}
+.profile-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #201a2c77;
+}
+.profile-card {
+  width: min(460px, 100%);
+  background: #fffdf9;
+  color: #282334;
+  border-radius: 22px;
+  padding: 32px;
+  box-shadow: 0 24px 90px #201a2c33;
+}
+.profile-card h2 {
+  margin: 0 0 12px;
+}
+.profile-card p {
+  line-height: 1.6;
+}
+.profile-card label {
+  display: block;
+  margin-bottom: 8px;
+}
+.profile-card input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #d8d2df;
+  border-radius: 10px;
+  box-sizing: border-box;
+  font: inherit;
+}
+.profile-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}

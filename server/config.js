@@ -14,6 +14,7 @@ export function publicAdapter(config) {
     "realm",
     "resource",
     "vendorId",
+    "jwk",
     "homeOrkUrl",
     "client-origin-auth",
     "ssl-required",
@@ -57,6 +58,17 @@ export async function loadConfig() {
           "Export a PUBLIC Tide client adapter without credentials.",
         );
       }
+      if (
+        !Array.isArray(adapter.jwk?.keys) ||
+        !adapter.jwk.keys.length ||
+        adapter.jwk.keys.some((key) => key.d || key.k)
+      )
+        throw new Error("Export the Tide adapter with embedded PUBLIC JWKs.");
+      adapter.tokenSignatureAlgorithms = ["EdDSA"];
+      adapter["auth-server-url"] = adapter["auth-server-url"].replace(
+        /\/+$/,
+        "",
+      );
       const authUrl = new URL(adapter["auth-server-url"]);
       if (!["http:", "https:"].includes(authUrl.protocol))
         throw new Error("Invalid Tide server URL.");
@@ -71,6 +83,7 @@ export async function loadConfig() {
   return {
     mode: demo ? "demo" : adapter ? "tide" : "setup",
     production,
+    requireDPoP: true,
     port,
     origin,
     adapter,

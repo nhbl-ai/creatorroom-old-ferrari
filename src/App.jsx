@@ -35,6 +35,7 @@ import {
 } from "./lib/crypto.js";
 import { signInvitation } from "./lib/tide.js";
 import { sampleFile } from "./lib/samples.js";
+import { ProfileOnboarding } from "./components/ProfileOnboarding.jsx";
 
 const formatSize = (bytes) =>
   bytes < 1024
@@ -1230,7 +1231,13 @@ export default function App() {
                 <ChevronDown size={13} />
               </label>
             ) : (
-              <span className="user-name">{user.name}</span>
+              <button
+                className="profile-name"
+                title="Edit display name"
+                onClick={() => setModal("profile")}
+              >
+                {user.name}
+              </button>
             )}
             <span className={`avatar avatar-${user.role}`}>
               {initials(user.name)}
@@ -1617,6 +1624,15 @@ export default function App() {
               );
             })
           }
+        />
+      )}
+      {config.mode === "tide" && (
+        <ProfileOnboarding
+          config={config}
+          user={user}
+          forceOpen={modal === "profile"}
+          onClose={() => setModal(null)}
+          onSaved={setUser}
         />
       )}
       {selectedAsset && (

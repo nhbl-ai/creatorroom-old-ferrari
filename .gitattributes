@@ -10,3 +10,6 @@
 *.jpg binary
 *.jpeg binary
 *.webp binary
+
+# The enclave integrity-checks the exact bytes of this SDK asset.
+public/tide_dpop_auth.html -text

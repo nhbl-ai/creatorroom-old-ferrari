@@ -7,3 +7,5 @@ Copyright in the upstream materials remains with their respective authors. The T
 The app depends on `@tidecloak/js`, `@tidecloak/verify`, `@tideorg/js`, and `heimdall-tide`; consult the licences included in those packages and [Tide's licence page](https://tide.org/licenses_tcoc2-0-0-en). Other dependencies retain their own package licences. `node_modules`, generated runtime bundles and browser binaries are not committed to this repository.
 
 Sample posters in `src/lib/samples.js` and decorative CSS covers were created for this prototype and do not include third-party client artwork.
+
+The DPoP verifier in `server/dpop.ts` is adapted from Tide Agent Pack `templates/dpop-verify/verifyDpop.ts`; its replay retention and algorithm allowlist are tightened for this single-process Express app. The relay HTML is copied byte-for-byte from `@tidecloak/js`. Branding assets are generated with Tide Agent Pack's `enclave-branding` scripts.

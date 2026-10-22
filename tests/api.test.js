@@ -371,6 +371,7 @@ test("Tide mode verifies actual JWT signatures, issuer, client, expiry and role;
   const config = {
     mode: "tide",
     origin,
+    requireDPoP: false, // Strict DPoP is covered separately.
     adapter: {
       "auth-server-url": "https://tide.example",
       realm: "studio",

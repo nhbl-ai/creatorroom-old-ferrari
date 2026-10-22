@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { verifyTideCloakToken } from "@tidecloak/verify";
+import { verifyDpop, MemoryJtiStore } from "../.cache/dpop-runtime.mjs";
 import { APP_ROLES } from "./config.js";
 import { HttpError } from "./errors.js";
 
@@ -29,6 +30,7 @@ export const DEMO_PEOPLE = [
 
 export function createAuthenticator(config, verify = verifyTideCloakToken) {
   const sessions = new Map();
+  const proofIds = new MemoryJtiStore();
   const cookieName = "creatorroom_demo";
   function cookieToken(req) {
     return req.headers.cookie
@@ -77,9 +79,16 @@ export function createAuthenticator(config, verify = verifyTideCloakToken) {
           503,
           "Configure TideCloak or explicitly start npm run demo.",
         );
-      const match = /^Bearer ([^\s]+)$/.exec(req.headers.authorization || "");
+      if (!config.adapter?.jwk?.keys?.length)
+        throw new HttpError(
+          503,
+          "Tide adapter needs its embedded verification key.",
+        );
+      const match = /^(Bearer|DPoP) ([^\s]+)$/i.exec(
+        req.headers.authorization || "",
+      );
       if (!match) throw new HttpError(401, "Sign in with TideCloak.");
-      const payload = await verify(config.adapter, match[1]);
+      const payload = await verify(config.adapter, match[2]);
       if (
         !payload ||
         typeof payload.sub !== "string" ||
@@ -91,13 +100,29 @@ export function createAuthenticator(config, verify = verifyTideCloakToken) {
           "The session is invalid or expired. Sign in again.",
         );
       }
-      // This MVP supports ordinary bearer tokens, not sender-constrained DPoP.
-      // A bound token must never be silently accepted as an unbound bearer.
-      if (payload.cnf)
-        throw new HttpError(
-          401,
-          "DPoP-bound tokens are not supported by this API. Use the documented bearer client configuration.",
-        );
+      if (
+        config.requireDPoP !== false ||
+        payload.cnf ||
+        match[1].toLowerCase() === "dpop"
+      ) {
+        try {
+          await verifyDpop(
+            {
+              url: new URL(req.originalUrl, config.origin).href,
+              method: req.method,
+              headers: { get: (name) => req.get(name) ?? null },
+            },
+            match[2],
+            payload,
+            { jtiStore: proofIds, trustForwardedHeaders: false },
+          );
+        } catch {
+          throw new HttpError(
+            401,
+            "Invalid or replayed DPoP proof. Sign in again.",
+          );
+        }
+      }
       const realmRoles = payload.realm_access?.roles || [];
       const governanceRoles =
         payload.resource_access?.["realm-management"]?.roles || [];
@@ -118,7 +143,10 @@ export function createAuthenticator(config, verify = verifyTideCloakToken) {
       return {
         id: payload.sub,
         name: String(
-          payload.name || payload.preferred_username || "Collaborator",
+          payload.given_name ||
+            payload.name ||
+            payload.preferred_username ||
+            "Collaborator",
         ).slice(0, 100),
         role,
         canSign:

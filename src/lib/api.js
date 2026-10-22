@@ -17,7 +17,7 @@ export async function initialiseAuth(config) {
       redirectUri: `${window.location.origin}/`,
       silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
       checkLoginIframe: false,
-      useDPoP: false,
+      useDPoP: { mode: "strict", alg: "ES256" },
     });
     if (initError)
       throw new Error(
@@ -31,16 +31,17 @@ export async function api(path, options = {}) {
   const headers = new Headers(options.headers);
   if (options.body !== undefined)
     headers.set("Content-Type", "application/json");
-  if (configuration?.mode === "tide" && service?.isLoggedIn()) {
-    const token = await service.getToken();
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-  }
-  const response = await fetch(`/api${path}`, {
+  const url = new URL(`/api${path}`, window.location.origin).href;
+  const request = {
     ...options,
     headers,
     cache: "no-store",
     credentials: "same-origin",
-  });
+  };
+  const response =
+    configuration?.mode === "tide" && service?.isLoggedIn()
+      ? await service.secureFetch(url, request)
+      : await fetch(url, request);
   const result = await response
     .json()
     .catch(() => ({ error: "The server returned an unexpected response." }));

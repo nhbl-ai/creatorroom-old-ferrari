@@ -11,3 +11,14 @@ await build({
   target: "node22",
   logLevel: "warning",
 });
+
+// Tide's RFC 9449 verifier is kept as TypeScript, matching the reference helper.
+await build({
+  entryPoints: ["server/dpop.ts"],
+  outfile: ".cache/dpop-runtime.mjs",
+  bundle: false,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  logLevel: "warning",
+});

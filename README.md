@@ -96,7 +96,7 @@ See **[validation results and limits](docs/VALIDATION.md)**. Passing local tests
 
 Runtime files are under ignored `data/`; generated bundles, browsers and test state are under ignored `.cache/`. Do not run multiple app processes against the same JSON store. Project names, asset metadata and audit metadata are visible to signed-in workspace users; original file contents and feedback are encrypted. Audit records are ordinary app logs, not a tamper-proof ledger.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md), [the current MVP scope](docs/MVP.md), and [workstreams for teammates](docs/TEAM.md). Removing an invitation stops subsequent API access; a saved Tide policy can work until expiry and already-read plaintext cannot be recalled. DPoP and a separate admin/quorum workflow are not implemented.
+Read [CONTRIBUTING.md](CONTRIBUTING.md), [the current MVP scope](docs/MVP.md), and [workstreams for teammates](docs/TEAM.md). Removing an invitation stops subsequent API access; a saved Tide policy can work until expiry and already-read plaintext cannot be recalled. Tide mode requires DPoP proof verification. A separate admin/quorum workflow is not implemented.
 
 ## Team and submission
 

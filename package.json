@@ -15,7 +15,9 @@
     "start": "node --env-file-if-exists=.env server/index.js --production",
     "pretest": "node scripts/build-policy-runtime.mjs",
     "test": "node --test tests/*.test.js",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "predemo": "node scripts/build-policy-runtime.mjs",
+    "pretest:e2e": "node scripts/build-policy-runtime.mjs"
   },
   "dependencies": {
     "@tidecloak/js": "0.14.41",
@@ -23,6 +25,7 @@
     "@tideorg/js": "0.14.29",
     "express": "5.3.0",
     "heimdall-tide": "0.14.41",
+    "jose": "5.10.0",
     "lucide-react": "1.61.0",
     "react": "19.3.1",
     "react-dom": "19.3.1"

@@ -2,7 +2,7 @@
 
 ## Trạng thái thực tế
 
-Code đã có đường đăng nhập, xác minh token, ký policy theo người nhận và asset, mã hóa/giải mã bằng SDK Tide thật. **Chưa chạy end-to-end với một realm/ORK network thật**: nhóm chưa có server và máy triển khai hiện chưa có Docker. Demo local là một đường riêng, không chứng minh bảo vệ Tide.
+Code đã có đường đăng nhập, xác minh token, ký policy theo người nhận và asset, mã hóa/giải mã bằng SDK Tide thật. Docker local và realm `creatorroom` đã được thiết lập trên máy quản trị, tài khoản quản trị đã liên kết Tide. Adapter local nằm trong `data/tidecloak.json` và không được commit. **Chưa kiểm chứng end-to-end mã hóa/chia sẻ trên ORK thật**; demo local là một đường riêng, không chứng minh bảo vệ Tide.
 
 Đọc [Quickstart chính thức](https://docs.tide.org/get-started/Tidecloak%20Quickstart) và [reference Relationship Attestation](https://github.com/tide-foundation/raziel-mcp/blob/master/reference-apps/relationship-attestation/scenario.md). Với mentor Tide, xác nhận network có built-in **`RelationshipAttestation:1` phiên bản hỗ trợ User subject và policy expiry**. Không tự thay bằng self-encryption hoặc một custom contract khi network chưa hỗ trợ.
 
@@ -61,7 +61,10 @@ Dùng một public OIDC client trong realm (tên gợi ý `creatorroom`):
 - Post-logout redirect: `http://localhost:3000/`.
 - Mapper `tideuserkey` và `vuid` có trong credential/access token; user phải liên kết Tide account.
 - Token của creator/admin phải mang `resource_access.realm-management.roles` cho quyền quản trị Tide. Kiểm tra scope/mappers nếu claim này thiếu; không bỏ kiểm tra ở backend.
-- Dùng bearer token thông thường. MVP chưa triển khai DPoP proof verification và sẽ từ chối token có `cnf`; không bật DPoP cho client rồi gửi token đó như Bearer.
+- Bật `dpop.bound.access.tokens=true` trên client. SDK khởi tạo `useDPoP: { mode: "strict", alg: "ES256" }`; mọi API đã đăng nhập dùng `IAMService.secureFetch` với URL tuyệt đối.
+- Backend xác minh chữ ký token EdDSA bằng `jwk` nhúng trong adapter, rồi kiểm tra DPoP: chữ ký proof, thumbprint khóa, hash token, method, URL, thời gian và replay. Token bound gửi dưới dạng Bearer bị từ chối.
+- Relay `/tide_dpop/iss/<hex>/aud/<hex>/tide_dpop_auth.html` được SDK phục vụ đúng byte, CSP theo hash SDK và `Allow-CSP-From: *`. Không sửa hoặc format `public/tide_dpop_auth.html`.
+- Bộ nhớ chống replay chỉ dành cho một tiến trình; triển khai nhiều instance cần kho jti dùng chung. Backend dùng `APP_ORIGIN` cố định để kiểm tra URL, không tin header forwarded do client gửi.
 
 Các thay đổi trên realm đã bật IGA có thể cần approvals. Dùng cùng origin xuyên suốt: **localhost và 127.0.0.1 không phải cùng browser origin**. Khi dùng domain/port khác, cập nhật client, adapter và `APP_ORIGIN` tương ứng.
 
@@ -136,3 +139,9 @@ Server kiểm tra cấu trúc, scope, signature presence và expiry của policy
 | Mở lại demo báo thiếu key | Đang dùng browser/profile khác hoặc IndexedDB bị xóa; dùng browser gốc hoặc upload mẫu mới |
 
 Nguồn kỹ thuật: [Tide SDK](https://github.com/tide-foundation/tidecloak-js), [policy signing helper](https://github.com/tide-foundation/raziel-mcp/blob/master/templates/relationship-attestation/relationship.ts), [role matrix](https://github.com/tide-foundation/raziel-mcp/blob/master/reference-apps/relationship-attestation/role-policy-matrix.md).
+
+## Hồ sơ và giao diện đăng nhập
+
+Người quản trị chọn branding CreatorRoom (cam `ed6a43`) và chỉ hỏi tên hiển thị. Artwork được sinh bởi script Tide, nằm trong `branding/`. Logo/background được upload và ký lại trong IdP trên realm local; public URLs không chứa thông tin riêng tư.
+
+`src/components/ProfileOnboarding.jsx` hỏi tên sau đăng nhập, cho phép bỏ qua và mở lại bằng cách bấm tên ở góc trên. Tên được lưu vào `firstName` qua Account API bằng DPoP/token của chính người dùng, không dùng Admin API. Không tự tạo email. Cơ chế `idp-review-profile` đã được tắt trên realm để tránh form chặn người dùng trước app.

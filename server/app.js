@@ -1,4 +1,10 @@
 import express from "express";
+import {
+  resolveDpopAuthRequest,
+  expectationsFromConfig,
+  DPOP_AUTH_HTML,
+  dpopAuthHeaders,
+} from "@tidecloak/js/dpop-server";
 import { randomUUID, createHash } from "node:crypto";
 import { createAuthenticator, DEMO_PEOPLE } from "./auth.js";
 import { publicAdapter } from "./config.js";
@@ -20,6 +26,25 @@ export function createApp({ config, store, verifyToken }) {
   const app = express();
   const auth = createAuthenticator(config, verifyToken);
   app.disable("x-powered-by");
+  const { issuer, client } = expectationsFromConfig(config.adapter || {});
+  app.use((req, res, next) => {
+    const relay =
+      req.path === "/tide_dpop_auth.html"
+        ? { status: 200, headers: dpopAuthHeaders(), body: DPOP_AUTH_HTML }
+        : resolveDpopAuthRequest({
+            pathname: req.path,
+            method: req.method,
+            expectedIssuer: issuer,
+            expectedClient: client,
+          });
+    if (relay) {
+      res.status(relay.status).set(relay.headers).send(relay.body);
+      return;
+    }
+    if (req.path.startsWith("/tide_dpop/")) return res.sendStatus(404);
+    res.set("Content-Security-Policy", "frame-src 'self' *");
+    next();
+  });
   app.use("/api", (req, res, next) => {
     res.set({
       "Cache-Control": "no-store",
@@ -529,14 +554,12 @@ export function createApp({ config, store, verifyToken }) {
       console.error(
         `[CreatorRoom] API error (${status}); no request body or token logged.`,
       );
-    res
-      .status(status)
-      .json({
-        error:
-          status === 500
-            ? "Something went wrong. Please try again."
-            : error.message,
-      });
+    res.status(status).json({
+      error:
+        status === 500
+          ? "Something went wrong. Please try again."
+          : error.message,
+    });
   });
   return app;
 }
