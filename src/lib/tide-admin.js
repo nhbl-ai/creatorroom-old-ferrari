@@ -35,10 +35,17 @@ export async function adminRequest(config, path, method = "GET", body) {
     value = raw;
   }
   if (!response.ok) {
+    // IGA errors carry a code in `error` (e.g. DEPENDENCY_NOT_MET) and Keycloak
+    // ErrorResponse puts the text in `errorMessage`; show both when present.
+    const detail = [value?.error, value?.errorMessage, value?.message]
+      .filter((part) => typeof part === "string" && part)
+      .join(": ")
+      .slice(0, 200);
     const error = new Error(
-      `Tide could not complete this operation (${response.status}). ${typeof value?.error === "string" ? value.error.slice(0, 160) : "Check the pending governance requests."}`,
+      `Tide could not complete this operation (${response.status}). ${detail || "Check the pending governance requests."}`,
     );
     error.status = response.status;
+    error.code = typeof value?.error === "string" ? value.error : "";
     throw error;
   }
   if (
@@ -80,58 +87,107 @@ export async function approveGovernance(config, id) {
     throw new Error("Tide returned an unexpected approval state.");
   return result;
 }
-export async function ensureCryptoRoles(config, personId) {
-  if (config.mode !== "tide") return;
-  const roles = await adminRequest(config, "/roles");
-  for (const name of ["_tide_enabled", "_tide_encryptor", "_tide_decryptor"]) {
-    const owned = await adminRequest(
-      config,
-      `/users/${encodeURIComponent(personId)}/role-mappings/realm`,
+
+const PENDING_PATH = "/iga/change-requests?status=PENDING";
+
+// Propose one governed change for `entityId` and approve only the matching
+// requests with the admin's own session. TideCloak files most user changes
+// inline and answers 204 (no Location), so requests are found by diffing the
+// PENDING list. Requests already filed for this same change are resumed rather
+// than blocking the member forever; anything else on the entity is refused.
+// Rows for other entities (other admins, ADMIN_POLICY side effects) are left
+// untouched.
+export async function governedChange(
+  config,
+  entityId,
+  perform,
+  isExpected,
+  {
+    request = adminRequest,
+    approve = approveGovernance,
+    noChange = "Tide recorded no change request. Check the realm configuration, then retry.",
+    rank = () => 0,
+  } = {},
+) {
+  const before = await request(config, PENDING_PATH);
+  const mine = before.filter((r) => r.entityId === entityId);
+  if (mine.some((r) => !isExpected(r)))
+    throw new Error(
+      "This member has another pending change. Review it in Tide governance, then retry.",
     );
-    if (owned.some((r) => r.name === name)) continue;
+  let targets = mine;
+  if (!targets.length) {
+    const beforeIds = new Set(before.map((r) => r.id));
+    await perform();
+    const created = (await request(config, PENDING_PATH)).filter(
+      (r) => !beforeIds.has(r.id) && r.entityId === entityId,
+    );
+    if (created.some((r) => !isExpected(r)))
+      throw new Error(
+        "Unexpected governance change; review it manually in Tide governance. No automatic approval was sent.",
+      );
+    if (!created.length) throw new Error(noChange);
+    targets = created;
+  }
+  for (const row of [...targets].sort((a, b) => rank(a) - rank(b))) {
+    const result = await approve(config, row.id);
+    if (result?.committed === false)
+      throw new Error(
+        `Your approval for ${row.actionType} was recorded (${result.authCount ?? "?"}/${result.threshold ?? "?"}). Waiting for other approvers in Tide governance, then retry.`,
+      );
+  }
+}
+
+const CRYPTO_ROLES = ["_tide_enabled", "_tide_encryptor", "_tide_decryptor"];
+export async function ensureCryptoRoles(config, personId, deps = {}) {
+  if (config.mode !== "tide") return;
+  const request = deps.request || adminRequest;
+  const person = encodeURIComponent(personId);
+  // Granting roles to an unattested self-registered user can lock them out.
+  const state = await request(
+    config,
+    `/tideAdminResources/users/${person}/committed`,
+  );
+  if (!state.committed)
+    throw new Error(
+      "This member's account is not linked to Tide yet. Use Member account linking first, then retry.",
+    );
+  const roles = await request(config, "/roles");
+  const wanted = CRYPTO_ROLES.map((name) => {
     const role = roles.find((r) => r.name === name);
     if (!role)
       throw new Error(
         `Realm is missing ${name}. Ask the realm administrator to configure it.`,
       );
-    let created;
-    try {
-      created = await adminRequest(
-        config,
-        `/users/${encodeURIComponent(personId)}/role-mappings/realm`,
-        "POST",
-        [role],
-      );
-    } catch (error) {
-      if (error.status === 409)
-        throw new Error(
-          "A role change is already pending for this user. Review it in Governance, then retry.",
-        );
-      throw error;
-    }
-    if (created.pendingGovernance) {
-      const id = created.changeRequestId || created.id;
-      if (!id)
-        throw new Error(
-          "Role change is pending. Review it in Governance, then retry.",
-        );
-      const row = await adminRequest(
-        config,
-        `/iga/change-requests/${encodeURIComponent(id)}`,
-      );
-      if (row.entityId !== personId || row.actionType !== "GRANT_ROLES")
-        throw new Error("Unexpected governance request; review it manually.");
-      await approveGovernance(config, id);
-    }
-    const after = await adminRequest(
+    return role;
+  });
+  const wantedIds = new Set(wanted.map((r) => r.id));
+  // One role per request: a second grant while one is pending returns 409.
+  for (let step = 0; step <= wanted.length; step++) {
+    const owned = await request(config, `/users/${person}/role-mappings/realm`);
+    const missing = wanted.filter((r) => !owned.some((o) => o.name === r.name));
+    if (!missing.length) return;
+    if (step === wanted.length) break;
+    await governedChange(
       config,
-      `/users/${encodeURIComponent(personId)}/role-mappings/realm`,
+      personId,
+      () =>
+        request(config, `/users/${person}/role-mappings/realm`, "POST", [
+          missing[0],
+        ]),
+      (row) =>
+        row.actionType === "GRANT_ROLES" &&
+        (row.rows || []).length > 0 &&
+        row.rows.every((r) => wantedIds.has(r.ROLE_ID)),
+      {
+        ...deps,
+        noChange: `Tide did not record a grant for ${missing[0].name}. Review the member in Tide governance, then retry.`,
+      },
     );
-    if (!after.some((r) => r.name === name))
-      throw new Error(
-        "Role approval is pending quorum. Complete it in Governance, then retry.",
-      );
   }
+  throw new Error(
+    "Role approval is pending quorum. Complete it in Tide governance, then retry.",
+  );
 }
 
 export async function configureSharedAccess(config) {
