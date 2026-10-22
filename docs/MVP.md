@@ -1,64 +1,41 @@
 # CreatorRoom MVP
 
-## Ý tưởng đã chốt
+## Phạm vi đã triển khai
 
-Không gian cộng tác trên tác phẩm chưa công bố: creator mời reviewer vào đúng nội dung cần góp ý, trong khi nền tảng không cần quyền đọc toàn bộ tác phẩm.
+Mỗi thành viên sở hữu project của mình và làm reviewer của draft được mời trong project khác. Chỉ máy host vận hành Docker/TideCloak; người dùng đăng nhập/đăng ký qua browser.
 
-## Phạm vi đầu tiên
+- Hồ sơ chỉ có display name tùy chọn, lưu theo danh tính đã xác minh trong app; không tạo email giả.
+- Project card mở room có sửa metadata, upload đầu tiên, danh sách draft, lời mời và điều hướng/refresh URL.
+- PNG/JPEG/WebP/TXT tối đa 1 MB; chuẩn bị policy trước, mã hóa trong browser rồi gửi ciphertext. Reservation chờ có Continue upload hoặc Discard.
+- Owner chọn 1–10 draft đã upload, tạo link một lần có hạn nhận 24 giờ. Người nhận đăng nhập và claim; owner xác nhận đúng mã tài khoản trước khi xin policy.
+- Admin nhóm duyệt policy bằng phiên browser của họ. Thành viên thường không có realm admin. Approver không tự được grant đọc draft của owner.
+- Reviewer chỉ đọc/góp ý với grant còn hạn; nhận xét mã hóa. Draft mới không tự chia sẻ. Sai người/draft bị API từ chối.
+- Operator riêng kiểm tra ciphertext; không đọc nội dung qua API.
+- Hủy link chặn API tiếp theo; không thu lại nội dung đã đọc hoặc vô hiệu chắc chắn policy đã copy còn hạn.
 
-- Dùng một hoặc hai ảnh thiết kế nhỏ do nhóm tự tạo; có thể bắt đầu bằng một đoạn văn bản giả để thử mã hóa.
-- Hai project A/B, mỗi project có một asset.
-- Creator, reviewer được mời và tài khoản operator tách biệt.
-- Reviewer được mở asset A và thêm nhận xét đơn giản, nhưng không mở được asset B.
-- Operator kiểm tra kho lưu và chỉ thấy ciphertext của nội dung được bảo vệ.
-- Rút quyền truy cập tương lai là phần mở rộng sau khi xác minh cơ chế hỗ trợ; không che giới hạn bằng cách buộc reviewer đăng nhập lại.
-- Không làm video streaming, watermark/DRM, thanh toán hoặc train model trong MVP đầu tiên.
-
-## Tích hợp Tide cần xác minh trên realm thật
-
-1. Template và Tide enrollment hoạt động.
-2. Một payload được mã hóa và mở bởi phiên người dùng hợp lệ.
-3. SDK hỗ trợ cách chia sẻ payload cho reviewer được chỉ định như thế nào.
-4. Quyền được ràng buộc theo asset/project ở đâu; một role `reviewer` chung là chưa đủ.
-5. Backend và operator có thể thấy plaintext ở bước nào không.
-6. Ai có thể sửa quyền; những thay đổi nào cần quorum thực tế.
-7. Nếu triển khai rút quyền: phiên cũ, token cũ và dữ liệu đã cache bị ảnh hưởng thế nào.
-
-Không tự đặt tên API hoặc triển khai mật mã riêng để thay thế một tính năng Tide chưa xác minh. Tham khảo [Quickstart](https://docs.tide.org/get-started/Tidecloak%20Quickstart) và [Core concepts](https://docs.tide.org/Core-Concepts/core-concepts).
+Luồng local tự động đã kiểm thử; mã hóa/chia sẻ giữa hai người Tide thật vẫn chờ nghiệm thu tương tác enclave. HTTPS hai máy hoãn theo yêu cầu sau khi các tunnel không ổn định trên mạng hiện tại.
 
 ## Phân chia trách nhiệm
 
-- Ứng dụng: project, metadata của asset, lời mời, nhận xét, giao diện.
-- TideCloak và đường mã hóa được hỗ trợ: xác thực và bảo vệ truy cập/giải mã theo cấu hình được kiểm chứng.
-- Storage: ciphertext cho nội dung mà nhóm tuyên bố operator không đọc được.
+Ứng dụng quản lý metadata, profile, lời mời, queue và kiểm tra owner/grant. Tide adapter thực hiện xác thực, DPoP, ký policy `RelationshipAttestation:1` theo người nhận + asset và SDK encryption/decryption. Backend kiểm tra cấu trúc/scope/expiry; ORKs phải xác minh chữ ký VVK thực tế. Fixture policy trong test không chứng minh chữ ký network hợp lệ.
 
-Chỉ có consent hoặc ACL trong DB ứng dụng chưa chứng minh operator không thể vượt quyền. Quorum quản trị không tự động trở thành quy trình phê duyệt mọi lượt đọc.
+Group approver khác với operator. Muốn ngăn admin tự đề nghị cấp quyền cần cấu hình/quorum và kiểm thử riêng. Không tuyên bố chỉ có ACL trong DB đã loại bỏ mọi quyền kiểm soát đơn phương.
 
-## Kiểm tra chấp nhận
+## Ngoài phạm vi hiện tại
 
-- [ ] Chưa đăng nhập: yêu cầu mở nội dung bị từ chối.
-- [ ] Reviewer được mời mở asset A thành công.
-- [ ] Reviewer thay ID trong yêu cầu sang asset B và bị từ chối.
-- [ ] Tài khoản không được mời mở asset A bị từ chối.
-- [ ] Storage không chứa plaintext hoặc master key của nội dung được bảo vệ.
-- [ ] Operator không có khả năng mở nội dung qua luồng giải mã đã bảo vệ.
-- [ ] Không ghi token, khóa hoặc nội dung giải mã vào log.
-- [ ] Nhận xét không tự làm lộ nội dung asset cho người ngoài phạm vi.
-- [ ] Nếu có rút quyền, thử ngay trong phiên reviewer cũ và ghi kết quả/độ trễ.
+Video lớn/streaming, DRM, thanh toán, chat thời gian thực, nhiều instance JSON storage và bảo đảm xóa bản sao đã đọc. Không triển khai custom Forseti contract hoặc tự thay mật mã khi network không hỗ trợ built-in policy.
+
+## Nghiệm thu còn lại
+
+Theo [TIDECLOAK.md](TIDECLOAK.md), thử A/B bằng browser profile riêng: owner upload sau approve, reviewer nhận lời mời/read/comment, owner đọc feedback, sai người/record/operator bị network từ chối và policy hết hạn thực tế. Ghi bằng chứng vào [VALIDATION.md](VALIDATION.md). Sau khi đổi mạng, làm tiếp [SHARING.md](SHARING.md) và thử đăng nhập hai máy.
 
 ## Demo hai phút dự kiến
 
-- 0–20 giây: creator cần nhận góp ý cho tác phẩm chưa công bố.
-- 20–45 giây: creator chọn asset A và mời reviewer.
-- 45–75 giây: reviewer mở A và để lại nhận xét.
-- 75–95 giây: reviewer thử mở B và bị từ chối.
-- 95–110 giây: operator kiểm tra storage; chỉ thấy ciphertext.
-- 110–120 giây: giải thích giá trị và giới hạn đã kiểm chứng.
+- 0–20 giây: nhu cầu góp ý tác phẩm chưa công bố và rào cản nền tảng đọc được tác phẩm.
+- 20–45 giây: owner mở project, chọn draft và mời reviewer; giải thích admin nhóm ký bằng Tide.
+- 45–75 giây: reviewer đọc và góp ý, owner đọc feedback.
+- 75–95 giây: thử draft khác và bị từ chối.
+- 95–110 giây: operator kiểm tra ciphertext.
+- 110–120 giây: giá trị và đúng giới hạn đã kiểm chứng; ghi rõ nếu cảnh quay dùng demo simulation.
 
-## Trạng thái triển khai
-
-Đã có application code React/Vite + Express, local demo chạy xuyên suốt, kiểm thử API/JWT và trình duyệt. Code Tide dùng SDK thật và policy `RelationshipAttestation:1` theo người nhận/asset; **chưa chạy với realm thật**. Xem `TIDECLOAK.md` để setup và `VALIDATION.md` để phân biệt bằng chứng đã có với việc còn lại.
-
-Trong MVP tích hợp, creator phải kiêm Tide admin để phê duyệt policy trong browser. Reviewer được cấp quyền crypto đọc và ghi của đúng record vì nhận xét cũng được mã hóa; API chỉ cho creator ghi bản gốc. Thời hạn lời mời là 1 hoặc 24 giờ. Xóa lời mời chặn các lượt API sau đó; không thu hồi chắc chắn policy đã sao chép trước expiry.
-
-Các checkbox ở trên là mục tiêu nghiệm thu Tide thật, không tự đánh dấu hoàn thành từ local demo.
+Đầu bài và các quyết định sản phẩm được giữ trong [brif.md](../brif.md).

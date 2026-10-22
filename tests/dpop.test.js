@@ -80,10 +80,7 @@ test("strict Tide auth verifies signature and DPoP binding, request, time and re
     };
   }
   const valid = await proof();
-  assert.equal(
-    (await auth.authenticate(request(token, valid))).role,
-    "creator",
-  );
+  assert.equal((await auth.authenticate(request(token, valid))).role, "member");
   await assert.rejects(auth.authenticate(request(token, valid)), {
     status: 401,
   });

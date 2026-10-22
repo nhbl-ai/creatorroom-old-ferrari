@@ -4,7 +4,8 @@
 // Upstream copyright: Tide Foundation and contributors. Modified for CreatorRoom
 // by Old Ferrari, 2026. Tide Community Open Code License; see THIRD_PARTY_NOTICES.md
 // and licenses/Tide-Community-Open-Code.txt. Distributed WITHOUT WARRANTY.
-import { api, tideService } from "./api.js";
+import { tideService } from "./api.js";
+import { adminRequest } from "./tide-admin.js";
 import { fromBase64, toBase64 } from "./crypto.js";
 
 export async function signInvitation({
@@ -16,9 +17,7 @@ export async function signInvitation({
 }) {
   if (config.mode === "demo") return null;
   if (!user.canSign)
-    throw new Error(
-      "This MVP requires the creator to also hold tide-realm-admin. See docs/TIDECLOAK.md.",
-    );
+    throw new Error("A Tide approver must sign this request in Approvals.");
   if (!recipient.tideUserKey)
     throw new Error(
       "The recipient must sign in through Tide once and have the tideuserkey mapper enabled.",
@@ -45,7 +44,12 @@ export async function signInvitation({
     expiry:
       Math.floor(Date.now() / 1000) + Math.min(24, Math.max(1, hours)) * 3600,
   });
-  const { policyBase64 } = await api("/tide/admin-policy");
+  const adminPolicy = await adminRequest(
+    config,
+    "/iga/role-policies/name/tide-realm-admin",
+  );
+  const policyBase64 = adminPolicy.policy;
+  if (!policyBase64) throw new Error("The realm has no signed admin policy.");
   const request = PolicySignRequest.New(policy);
   request.setCustomExpiry(604800);
   // The upstream reference uses this internal client for policy signing; the

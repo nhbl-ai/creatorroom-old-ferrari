@@ -32,7 +32,22 @@ export async function loadConfig() {
   if (demo && production)
     throw new Error("Demo identities must not run in production mode.");
   const port = Number(process.env.PORT || 3000);
-  const origin = process.env.APP_ORIGIN || `http://localhost:${port}`;
+  const origin = new URL(process.env.APP_ORIGIN || `http://localhost:${port}`)
+    .origin;
+  const origins = [
+    ...new Set([
+      origin,
+      ...(process.env.APP_ADDITIONAL_ORIGINS || "")
+        .split(",")
+        .filter(Boolean)
+        .map((value) => new URL(value.trim()).origin),
+    ]),
+  ];
+  const tideProxy = process.env.TIDECLOAK_PROXY === "true";
+  if (tideProxy && (demo || !origin.startsWith("https://")))
+    throw new Error(
+      "Shared access requires real Tide mode and an HTTPS app origin.",
+    );
   const adapterPath = resolve(
     process.env.TIDECLOAK_CONFIG_PATH || "./data/tidecloak.json",
   );
@@ -64,6 +79,7 @@ export async function loadConfig() {
         adapter.jwk.keys.some((key) => key.d || key.k)
       )
         throw new Error("Export the Tide adapter with embedded PUBLIC JWKs.");
+      if (tideProxy) adapter["auth-server-url"] = origin;
       adapter.tokenSignatureAlgorithms = ["EdDSA"];
       adapter["auth-server-url"] = adapter["auth-server-url"].replace(
         /\/+$/,
@@ -87,6 +103,10 @@ export async function loadConfig() {
     port,
     origin,
     adapter,
+    adapterPath,
+    origins,
+    tideProxy,
+    tideUpstream: process.env.TIDECLOAK_UPSTREAM || "http://127.0.0.1:8080",
     host: demo ? "127.0.0.1" : process.env.HOST || "127.0.0.1",
     dataPath: resolve(
       demo

@@ -1,7 +1,8 @@
-// Adapted from Tide Agent Pack onboarding-modal: the user's own Account API,
+// Optional CreatorRoom profile, linked to the authenticated subject by the API.
+// Does not depend on Keycloak profile/email requirements,
 // optional display name only, no invented email and no admin credentials.
 import { useEffect, useState } from "react";
-import { tideService, api } from "../lib/api.js";
+import { send } from "../lib/api.js";
 
 export function ProfileOnboarding({
   config,
@@ -14,17 +15,14 @@ export function ProfileOnboarding({
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const dismissKey = `creatorroom.profile:${config.adapter.realm}:${user.id}`;
+  const dismissKey = `creatorroom.profile:${config.adapter?.realm || "demo"}:${user.id}`;
   useEffect(() => {
-    const service = tideService();
-    const existing = service.getValueFromToken("given_name") || "";
-    setName(existing === "Admin" ? "" : String(existing));
-    const placeholder =
-      existing === "Admin" &&
-      service.getValueFromToken("family_name") === "User";
+    setName(user.hasDisplayName ? user.name : "");
     if (
       forceOpen ||
-      ((!existing || placeholder) && localStorage.getItem(dismissKey) !== "1")
+      (config.mode === "tide" &&
+        !user.hasDisplayName &&
+        localStorage.getItem(dismissKey) !== "1")
     )
       setOpen(true);
   }, [dismissKey, forceOpen]);
@@ -40,24 +38,11 @@ export function ProfileOnboarding({
     setBusy(true);
     setError("");
     try {
-      const service = tideService();
-      const base = config.adapter["auth-server-url"].replace(/\/+$/, "");
-      const url = `${base}/realms/${encodeURIComponent(config.adapter.realm)}/account/`;
-      const response = await service.secureFetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ firstName: name.trim() }),
-      });
-      if (response.status === 202)
-        throw new Error(
-          "Your profile is pending approval; it has not been saved yet.",
-        );
-      if (!response.ok)
-        throw new Error(
-          `Could not save your display name (${response.status}).`,
-        );
-      await service.forceUpdateToken();
-      const { user: updated } = await api("/me");
+      const { user: updated } = await send(
+        "/profile",
+        { displayName: name.trim() },
+        "PATCH",
+      );
       onSaved(updated);
       close();
     } catch (failure) {

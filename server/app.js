@@ -1,4 +1,5 @@
 import express from "express";
+import { installSharedAdapter } from "./shared.js";
 import {
   resolveDpopAuthRequest,
   expectationsFromConfig,
@@ -6,6 +7,10 @@ import {
   dpopAuthHeaders,
 } from "@tidecloak/js/dpop-server";
 import { randomUUID, createHash } from "node:crypto";
+import {
+  installPublicInvitations,
+  installCollaboration,
+} from "./collaboration.js";
 import { createAuthenticator, DEMO_PEOPLE } from "./auth.js";
 import { publicAdapter } from "./config.js";
 import { audit } from "./store.js";
@@ -55,7 +60,7 @@ export function createApp({ config, store, verifyToken }) {
     // to mutate state. Enforce Origin as well, including login/logout endpoints.
     if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
       const origin = req.get("Origin");
-      if (origin && origin !== config.origin)
+      if (origin && !(config.origins || [config.origin]).includes(origin))
         return next(
           new HttpError(
             403,
@@ -75,6 +80,13 @@ export function createApp({ config, store, verifyToken }) {
       adapter: config.mode === "tide" ? publicAdapter(config.adapter) : null,
       demoPeople: config.mode === "demo" ? DEMO_PEOPLE.map(safePerson) : [],
       maxFileBytes: 1_000_000,
+      sharedOrigin: config.tideProxy ? config.origin : null,
+      sharedReady: Boolean(
+        config.tideProxy &&
+          config.adapter?.[`client-origin-auth-${config.origin}`],
+      ),
+      adminLocalOnly: Boolean(config.tideProxy),
+      adminBaseUrl: config.tideProxy ? "http://localhost:8080" : null,
     }),
   );
   app.get("/api/health", (_req, res) =>
@@ -89,9 +101,13 @@ export function createApp({ config, store, verifyToken }) {
     res.json({ ok: true });
   });
 
+  installPublicInvitations(app, { store });
   app.use("/api", async (req, _res, next) => {
     req.user = await auth.authenticate(req);
     const state = store.read();
+    const profile = state.profiles.find((p) => p.id === req.user.id);
+    req.user.hasDisplayName = Boolean(profile?.displayName);
+    if (profile?.displayName) req.user.name = profile.displayName;
     const prior = state.people.find((person) => person.id === req.user.id);
     if (
       !prior ||
@@ -107,8 +123,15 @@ export function createApp({ config, store, verifyToken }) {
     next();
   });
 
+  installCollaboration(app, { config, store });
+  installSharedAdapter(app, { config });
+
   function creator(user) {
-    requireThat(user.role === "creator", 403, "Only a creator can do this.");
+    requireThat(
+      user.role !== "operator",
+      403,
+      "Operators cannot change projects.",
+    );
   }
   function findAsset(state, id) {
     const asset = state.assets.find((entry) => entry.id === id);
@@ -161,6 +184,23 @@ export function createApp({ config, store, verifyToken }) {
     canRead: Boolean(activeGrant(state, user, asset)),
     ownerId: state.projects.find((project) => project.id === asset.projectId)
       ?.ownerId,
+    uploadStatus: asset.envelope
+      ? "uploaded"
+      : state.grants.some(
+            (g) =>
+              g.assetId === asset.id &&
+              g.personId === user.id &&
+              (!g.expiresAt || Date.parse(g.expiresAt) > Date.now()),
+          )
+        ? "ready"
+        : state.approvals.some(
+              (a) =>
+                a.assetId === asset.id &&
+                a.personId === user.id &&
+                a.status === "pending",
+            )
+          ? "pending"
+          : "unfinished",
     commentCount: state.comments.filter(
       (comment) => comment.assetId === asset.id,
     ).length,
@@ -179,20 +219,37 @@ export function createApp({ config, store, verifyToken }) {
     });
   });
 
-  // Project titles, colours, asset names and activity metadata are discoverable
-  // by signed-in teammates. Protected file bytes and feedback are never included.
+  // Real members discover only their own projects and the drafts shared with them.
+  // The local demo intentionally keeps all sample metadata visible for denial checks.
   app.get("/api/projects", (req, res) => {
     const state = store.read();
+    const broadMetadata =
+      config.mode === "demo" || req.user.role === "operator";
+    const visibleAssets = (project) =>
+      state.assets.filter(
+        (a) =>
+          a.projectId === project.id &&
+          (broadMetadata ||
+            project.ownerId === req.user.id ||
+            activeGrant(state, req.user, a)),
+      );
     res.json({
-      projects: state.projects.map((project) => ({
-        ...project,
-        assets: state.assets
-          .filter((asset) => asset.projectId === project.id)
-          .map((asset) => publicAsset(state, req.user, asset)),
-        ownerName:
-          state.people.find((person) => person.id === project.ownerId)?.name ||
-          "Creator",
-      })),
+      projects: state.projects
+        .filter(
+          (p) =>
+            broadMetadata ||
+            p.ownerId === req.user.id ||
+            visibleAssets(p).length,
+        )
+        .map((project) => ({
+          ...project,
+          assets: visibleAssets(project).map((a) =>
+            publicAsset(state, req.user, a),
+          ),
+          ownerName:
+            state.people.find((p) => p.id === project.ownerId)?.name ||
+            "Creator",
+        })),
     });
   });
   app.post("/api/projects", async (req, res) => {
@@ -222,11 +279,6 @@ export function createApp({ config, store, verifyToken }) {
   });
   app.post("/api/projects/:id/assets", async (req, res) => {
     creator(req.user);
-    requireThat(
-      config.mode === "demo" || req.user.canSign,
-      403,
-      "The MVP creator also needs tide-realm-admin to approve per-person Tide policies. See the setup guide.",
-    );
     onlyFields(req.body, ["title", "mime", "size"]);
     requireThat(
       MIME_TYPES.includes(req.body.mime),
@@ -273,9 +325,17 @@ export function createApp({ config, store, verifyToken }) {
     const asset = findAsset(state, req.params.id);
     owner(state, req.user, asset);
     requireThat(
-      config.mode === "demo" || req.user.canSign,
+      config.mode === "demo" ||
+        req.user.canSign ||
+        state.grants.some(
+          (g) =>
+            g.assetId === asset.id &&
+            g.personId === req.user.id &&
+            g.policyBase64 === req.body.policyBase64 &&
+            Date.parse(g.expiresAt) > Date.now(),
+        ),
       403,
-      "A Tide realm admin must approve the draft policy.",
+      "Wait for an approver to sign your draft policy before uploading.",
     );
     requireThat(
       !asset.envelope,
@@ -293,6 +353,9 @@ export function createApp({ config, store, verifyToken }) {
       const target = findAsset(next, asset.id);
       requireThat(!target.envelope, 409, "This draft already has content.");
       target.envelope = envelope;
+      next.grants = next.grants.filter(
+        (g) => !(g.assetId === asset.id && g.personId === req.user.id),
+      );
       next.grants.push({
         assetId: asset.id,
         personId: req.user.id,
@@ -313,6 +376,8 @@ export function createApp({ config, store, verifyToken }) {
         "Only unfinished uploads can be discarded.",
       );
       state.assets = state.assets.filter((entry) => entry.id !== asset.id);
+      state.approvals = state.approvals.filter((a) => a.assetId !== asset.id);
+      state.grants = state.grants.filter((g) => g.assetId !== asset.id);
     });
     res.json({ ok: true });
   });
@@ -402,6 +467,13 @@ export function createApp({ config, store, verifyToken }) {
             grant.personId === req.params.personId
           ),
       );
+      for (const a of state.approvals.filter(
+        (a) =>
+          a.assetId === req.params.id &&
+          a.personId === req.params.personId &&
+          a.status === "pending",
+      ))
+        a.status = "cancelled";
       audit(state, req.user, "Invitation removed", req.params.id);
     });
     res.json({
@@ -513,33 +585,6 @@ export function createApp({ config, store, verifyToken }) {
       })),
     });
   });
-  app.get("/api/tide/admin-policy", async (req, res) => {
-    requireThat(
-      config.mode === "tide" && req.user.canSign,
-      403,
-      "This operation needs the creator’s Tide realm-admin session.",
-    );
-    const url = new URL(
-      `${config.adapter["auth-server-url"].replace(/\/$/, "")}/admin/realms/${encodeURIComponent(config.adapter.realm)}/iga/role-policies/name/tide-realm-admin`,
-    );
-    const upstream = await fetch(url, {
-      headers: { Authorization: req.headers.authorization },
-      signal: AbortSignal.timeout(15_000),
-      redirect: "error",
-    });
-    requireThat(
-      upstream.ok,
-      502,
-      "Cannot load the signed Tide admin policy. Check realm enrollment and governance setup.",
-    );
-    const result = await upstream.json();
-    requireThat(
-      typeof result.policy === "string" && result.policy.length > 0,
-      502,
-      "The realm has no signed admin policy yet.",
-    );
-    res.json({ policyBase64: result.policy });
-  });
   app.use("/api", (_req, _res, next) =>
     next(new HttpError(404, "API route not found.")),
   );
@@ -552,7 +597,7 @@ export function createApp({ config, store, verifyToken }) {
           : error.status || 500;
     if (status >= 500)
       console.error(
-        `[CreatorRoom] API error (${status}); no request body or token logged.`,
+        `[CreatorRoom] API error (${status}, ${String(error.code || error.name || "UnknownError").replace(/[^A-Za-z0-9_]/g, "").slice(0, 40)}); no request body or token logged.`,
       );
     res.status(status).json({
       error:

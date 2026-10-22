@@ -1,9 +1,28 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
+
+async function replaceFile(temporary, target) {
+  // Windows scanners can briefly hold an existing JSON file open. Keep atomic
+  // replacement and retry only sharing/access errors; never unlink the target.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await rename(temporary, target);
+      return;
+    } catch (error) {
+      if (process.platform !== "win32" || !["EPERM", "EBUSY", "EACCES"].includes(error.code) || attempt >= 5)
+        throw error;
+      await delay(15 * 2 ** attempt);
+    }
+  }
+}
 
 const emptyState = () => ({
-  version: 1,
+  version: 2,
+  profiles: [],
+  invitations: [],
+  approvals: [],
   people: [],
   projects: [],
   assets: [],
@@ -19,8 +38,10 @@ export async function createStore(filePath) {
   if (filePath) {
     try {
       state = JSON.parse(await readFile(filePath, "utf8"));
+      if (state.version === 1)
+        state = { ...emptyState(), ...state, version: 2 };
       if (
-        state.version !== 1 ||
+        state.version !== 2 ||
         Object.keys(emptyState()).some((key) => !(key in state))
       ) {
         throw new Error("Unsupported CreatorRoom data file.");
@@ -44,7 +65,12 @@ export async function createStore(filePath) {
           await writeFile(temporary, JSON.stringify(next, null, 2), {
             mode: 0o600,
           });
-          await rename(temporary, filePath);
+          try {
+            await replaceFile(temporary, filePath);
+          } catch (error) {
+            await unlink(temporary).catch(() => {});
+            throw error;
+          }
         }
         state = next;
         return result;

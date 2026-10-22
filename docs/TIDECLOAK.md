@@ -60,29 +60,39 @@ Dùng một public OIDC client trong realm (tên gợi ý `creatorroom`):
 - Web origins: `http://localhost:3000`.
 - Post-logout redirect: `http://localhost:3000/`.
 - Mapper `tideuserkey` và `vuid` có trong credential/access token; user phải liên kết Tide account.
-- Token của creator/admin phải mang `resource_access.realm-management.roles` cho quyền quản trị Tide. Kiểm tra scope/mappers nếu claim này thiếu; không bỏ kiểm tra ở backend.
+- Token của người duyệt admin phải mang `resource_access.realm-management.roles` cho quyền quản trị Tide. Kiểm tra scope/mappers nếu claim này thiếu; không bỏ kiểm tra ở backend.
 - Bật `dpop.bound.access.tokens=true` trên client. SDK khởi tạo `useDPoP: { mode: "strict", alg: "ES256" }`; mọi API đã đăng nhập dùng `IAMService.secureFetch` với URL tuyệt đối.
 - Backend xác minh chữ ký token EdDSA bằng `jwk` nhúng trong adapter, rồi kiểm tra DPoP: chữ ký proof, thumbprint khóa, hash token, method, URL, thời gian và replay. Token bound gửi dưới dạng Bearer bị từ chối.
 - Relay `/tide_dpop/iss/<hex>/aud/<hex>/tide_dpop_auth.html` được SDK phục vụ đúng byte, CSP theo hash SDK và `Allow-CSP-From: *`. Không sửa hoặc format `public/tide_dpop_auth.html`.
-- Bộ nhớ chống replay chỉ dành cho một tiến trình; triển khai nhiều instance cần kho jti dùng chung. Backend dùng `APP_ORIGIN` cố định để kiểm tra URL, không tin header forwarded do client gửi.
+- Bộ nhớ chống replay chỉ dành cho một tiến trình; triển khai nhiều instance cần kho jti dùng chung. Backend kiểm tra URL theo `APP_ORIGIN` và danh sách `APP_ADDITIONAL_ORIGINS` đã cấu hình, không tin header forwarded do client gửi.
 
 Các thay đổi trên realm đã bật IGA có thể cần approvals. Dùng cùng origin xuyên suốt: **localhost và 127.0.0.1 không phải cùng browser origin**. Khi dùng domain/port khác, cập nhật client, adapter và `APP_ORIGIN` tương ứng.
 
-## 5. Tạo và gán roles cho ba tài khoản
+## 5. Thành viên, người duyệt và operator
 
-| Tài khoản | App role (realm) | Tide roles (realm) | Quyền quản trị Tide |
-|---|---|---|---|
-| Creator | `creatorroom_creator` | `_tide_enabled`, `_tide_encryptor`, `_tide_decryptor` | Client role `tide-realm-admin` trong **`realm-management`** |
-| Reviewer | `creatorroom_reviewer` | `_tide_enabled`, `_tide_encryptor`, `_tide_decryptor` | Không |
-| Operator | `creatorroom_operator` | `_tide_enabled` nếu cần đăng nhập | Không |
+Mọi người đăng ký/đăng nhập bằng trình duyệt tại CreatorRoom; **không cài Tide hoặc Docker trên máy của từng thành viên**. Trong mode Tide, một JWT hợp lệ của realm/client cho phép dùng workspace dưới vai trò `member`. Creator/reviewer là quan hệ với project/draft, không còn là hai loại tài khoản phải cấp riêng.
 
-`_tide_encryptor` và `_tide_decryptor` là tên cố định của built-in contract; không đưa hai role đó vào default composite cho tất cả mọi người. Reviewer cần quyền encrypt vì góp ý cũng được mã hóa. API chỉ cho owner ghi file gốc; crypto policy cho reviewer đọc và mã hóa góp ý của đúng record.
+| Tài khoản | Quyền ứng dụng | Tide roles và quyền quản trị |
+|---|---|---|
+| Thành viên thường | Tạo/sửa project của mình; review draft được mời | Không có realm admin; crypto roles được người duyệt cấp khi chuẩn bị policy |
+| Admin nhóm | Thành viên + hàng chờ Approvals | Client role `tide-realm-admin` trong **`realm-management`**, admin policy hợp lệ |
+| Operator riêng | Storage inspector; không tạo project hoặc đọc draft | Realm role `creatorroom_operator`; không có Tide admin/encrypt/decrypt |
 
-Creator kiêm Tide admin là **giới hạn phạm vi MVP**, không phải yêu cầu rằng mọi creator của sản phẩm hoàn chỉnh nên có quyền quản trị realm. Trong bản thực tế nên tách yêu cầu mời khỏi bước phê duyệt của admin/quorum.
+Người duyệt mở **Approvals** trên máy host tại `http://localhost:3000`. Khi approve, browser dùng token/DPoP của chính admin để kiểm tra và đề nghị cấp `_tide_enabled`, `_tide_encryptor`, `_tide_decryptor` cho người nhận; IGA có thể mở enclave hoặc chờ quorum. Code chỉ tự tiếp tục đúng change request vừa tạo, không duyệt hàng loạt mọi yêu cầu đang tồn đọng. Khi có conflict/pending quorum, xem **Governance**, hoàn tất yêu cầu hợp lệ rồi thử lại.
 
-Approve và commit các role assignments qua IGA theo hướng dẫn Tide, rồi refresh credential/đăng nhập lại. Cấp role mới và thu hồi quyền đang dùng là hai vấn đề khác nhau: không dùng việc đăng nhập lại để che độ trễ thu hồi.
+Sau đó browser ký relationship policy cho đúng người và đúng draft. Backend lưu policy và grant sau khi kiểm tra scope; admin không tự được quyền đọc file của thành viên. Không cấp `tide-realm-admin` cho người mới. Nếu cần cấu hình admin đầu tiên, dùng console local và hướng dẫn Tide; không biến role đó thành default.
 
-Operator phải là tài khoản riêng, không có Tide admin hoặc encrypt/decrypt roles. Một người có đủ quyền quản trị Tide vẫn có thể đề nghị tự cấp quyền; muốn ngăn một admin làm việc đó đơn phương cần cấu hình quorum và kiểm thử riêng. MVP chưa chứng minh bảo vệ trước một quorum thông đồng hoặc một ứng dụng client độc hại.
+Sau khi được cấp crypto roles, thành viên bấm **Refresh access** (hoặc đăng nhập lại khi cần) rồi tiếp tục upload/mở draft. Reviewer cần encrypt để góp ý được mã hóa; quyền ghi bản gốc vẫn do API giới hạn cho owner.
+
+Một người có quyền quản trị Tide có thể đề nghị tự cấp quyền; muốn ngăn hành động đơn phương cần cấu hình và thử quorum riêng. MVP chưa chứng minh bảo vệ trước quorum thông đồng hoặc client độc hại.
+
+### Bật đăng ký thành viên lần đầu
+
+Landing và trang lời mời có hai hành động riêng: **Continue with TideCloak / Sign in** và **Create account**. Nút Create account dùng `getTideCloakClient().register()` của SDK, giữ route lời mời để quay lại sau đăng ký; app không nhận mật khẩu.
+
+Realm local hiện đã bật default required action `link-tide-account-action` cho tài khoản mới. Thay đổi `setRegistrationAllowed=true` đang chờ quản trị nhóm ký trong **Approvals → Tide governance → SET_REALM_CONFIG → Review in Tide**. Kiểm tra enclave hiển thị đúng bật đăng ký rồi duyệt. Đây là bước setup một lần, cần hoàn tất trước khi mời tài khoản mới; hiện đăng nhập của tài khoản đã có vẫn hoạt động.
+
+Ở realm khác, admin bật **Realm settings → Login → User registration**, đảm bảo **Authentication → Required actions → link-tide-account-action** enabled và default, rồi hoàn tất đúng governance request. Không cấp role admin mặc định cho người đăng ký. Hãy thử nút Create account bằng browser profile mới, hoàn thành đăng ký realm và liên kết danh tính Tide trong browser; sau đó quay lại app để chọn display name. Người dùng đã có tài khoản dùng Sign in, không tạo lại.
 
 ## 6. Export adapter và nối với CreatorRoom
 
@@ -102,20 +112,22 @@ npm run dev
 
 Không truyền `--demo`. Khi adapter chưa tồn tại ứng dụng hiện trang setup và từ chối API nghiệp vụ; không tự chuyển sang danh tính giả.
 
-## 7. Kiểm chứng đường Tide thật
+## 7. Kiểm chứng đường Tide thật — đang chờ người dùng thử
 
-1. Reviewer đăng nhập một lần để đăng ký `sub` và `tideuserkey` đã được xác minh với API, rồi đăng xuất. Nên dùng hai browser/profile riêng cho hai người trong mode Tide.
-2. Creator đăng nhập, tạo project và upload một ảnh nhỏ.
-3. Upload mở quy trình ký policy cho chính creator trong Tide enclave. Phê duyệt bằng credential của admin; server không ký và không phê duyệt thay.
-4. Mở ảnh vừa upload, xác nhận giải mã được.
-5. Vào **People & access**, chọn reviewer và thời hạn 1 hoặc 24 giờ. Phê duyệt policy riêng cho reviewer trong enclave.
-6. Reviewer mở cùng asset và gửi góp ý. Creator đọc được góp ý sau khi giải mã.
-7. Reviewer thử asset B không được mời: API phải trả 403. Thử trực tiếp với policy không đúng record/người nhận để xác nhận **network cũng từ chối**, không chỉ API.
-8. Operator mở Storage inspector: chỉ thấy ciphertext, không có plaintext hoặc key. Gọi `/api/assets/<id>/open` phải nhận 403.
-9. Kiểm tra request, log và file JSON: không có bytes ảnh gốc hoặc nội dung góp ý đọc được.
-10. Xác nhận policy expiry trên chính network. Một policy đã copy không bị thu hồi chỉ vì xóa row trong app.
+Dùng ba browser profile riêng cho owner A, member B và operator; thêm phiên admin nhóm nếu A không phải admin. Đừng dùng nút đổi persona demo để chứng minh Tide thật.
 
-Đánh dấu kết quả vào `docs/VALIDATION.md`. Chỉ gọi tích hợp đã kiểm chứng khi có cả lượt thành công và các lượt bị từ chối trên network thật.
+1. A đăng nhập/đăng ký qua browser, lưu display name, refresh kiểm tra tên còn.
+2. A tạo project P: card mở được, sửa metadata và refresh URL project được.
+3. A upload ảnh nhỏ. Thành viên thường tạo reservation + policy request rồi thấy trạng thái chờ; **bytes file chưa được gửi lên server**. Admin nhóm vào Approvals và phê duyệt các bước Tide.
+4. A chọn **Continue upload**, chọn lại file cùng MIME/kích thước. Browser refresh credential, dùng policy đã duyệt để mã hóa rồi gửi ciphertext. Mở lại draft và xác nhận giải mã được. Admin tự upload có thể ký policy của mình ngay trong luồng.
+5. A chọn draft đã upload, tạo link một lần và gửi cho B. B mở link, đăng nhập/đăng ký, nhận lời mời; chưa có quyền đọc lúc này.
+6. A đối chiếu mã tài khoản của B ngoài app (display name không phải bằng chứng danh tính), bấm xác nhận người nhận. Admin nhóm duyệt policy riêng cho từng draft.
+7. B vào Shared with me hoặc mở lại link, đọc draft và gửi góp ý. A đọc được góp ý. B vẫn tạo được project Q của mình.
+8. B thử draft khác không được mời: API phải từ chối. Thử policy sai người/record trực tiếp với SDK để xác nhận **network cũng từ chối**. Không chỉ kiểm tra nút ẩn.
+9. Operator chỉ thấy ciphertext trong Storage inspector; `/api/assets/<id>/open` trả 403. Request/log/storage không có bytes gốc hoặc nhận xét đọc được.
+10. Hủy lời mời: API từ chối ngay với phiên cũ. Kiểm tra expiry thực tế trên network; không tuyên bố xóa row thu hồi policy đã copy.
+
+Ghi kết quả vào `docs/VALIDATION.md`. Người dùng chọn thử Tide thật sau; test tự động dùng fixture không thay thế các lượt này. Hiện giữ local; xem [hướng dẫn chia sẻ](SHARING.md) khi đổi mạng.
 
 ## 8. Vì sao không dùng self-encryption cho chia sẻ?
 
@@ -129,7 +141,7 @@ Server kiểm tra cấu trúc, scope, signature presence và expiry của policy
 
 | Lỗi | Cần kiểm tra |
 |---|---|
-| Login được nhưng API 403 về role | App role phải có trong token, operator không được dùng chung persona creator |
+| Login được nhưng API 403 | Kiểm tra owner/grant của draft; operator không dùng chung persona thành viên. Member thường không cần role creator/reviewer |
 | Creator không được ký policy | `tide-realm-admin` là client role dưới `realm-management`, không chỉ là realm role cùng tên |
 | Không có reviewer trong danh sách | Reviewer chưa đăng nhập app hoặc thiếu `tideuserkey` mapper |
 | Không có signed admin policy | Enrollment/IGA bootstrap chưa xong; kiểm tra với Tide mentor |
@@ -144,4 +156,4 @@ Nguồn kỹ thuật: [Tide SDK](https://github.com/tide-foundation/tidecloak-js
 
 Người quản trị chọn branding CreatorRoom (cam `ed6a43`) và chỉ hỏi tên hiển thị. Artwork được sinh bởi script Tide, nằm trong `branding/`. Logo/background được upload và ký lại trong IdP trên realm local; public URLs không chứa thông tin riêng tư.
 
-`src/components/ProfileOnboarding.jsx` hỏi tên sau đăng nhập, cho phép bỏ qua và mở lại bằng cách bấm tên ở góc trên. Tên được lưu vào `firstName` qua Account API bằng DPoP/token của chính người dùng, không dùng Admin API. Không tự tạo email. Cơ chế `idp-review-profile` đã được tắt trên realm để tránh form chặn người dùng trước app.
+`src/components/ProfileOnboarding.jsx` hỏi tên sau đăng nhập, cho phép bỏ qua và mở lại bằng cách bấm tên ở góc trên. Tên được lưu qua `PATCH /api/profile` vào hồ sơ ứng dụng theo `sub` đã xác minh, bằng DPoP/token của chính người dùng. Không dùng Account API để tránh validation email của realm; không tự tạo email, không cập nhật role hoặc danh tính từ form. Cơ chế `idp-review-profile` đã được tắt trên realm để tránh form chặn người dùng trước app.

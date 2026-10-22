@@ -1,6 +1,6 @@
 # CreatorRoom — brief để thảo luận và triển khai
 
-Ngày: 22/10/2026 · Phiên bản: 0.1 · Trạng thái: bản nháp để chốt với người dùng.
+Ngày: 22/10/2026 · Phiên bản: 0.3 · Trạng thái: code local đã triển khai; chờ nghiệm thu Tide thật, tunnel tạm hoãn theo yêu cầu.
 
 File giữ tên `brif.md` theo yêu cầu. Đây là đầu bài cho lần triển khai tiếp theo, không phải báo cáo rằng các chức năng bên dưới đã hoàn thành. Khi quyết định thay đổi, cập nhật file này trước khi triển khai phần phụ thuộc.
 
@@ -25,7 +25,7 @@ Trải nghiệm cần giống một ứng dụng cộng tác có thể sử dụ
 
 Không yêu cầu mỗi thành viên cài Docker hoặc TideCloak. Người dùng đăng nhập/tạo danh tính Tide bằng trình duyệt; hạ tầng do nhóm vận hành. Cần mô tả rõ bước này trong giao diện.
 
-## 3. Hiện trạng và các lỗi phải giải quyết
+## 3. Hiện trạng trước lần triển khai này
 
 - App hiện có React/Vite, Express, kho JSON, local demo, code SDK Tide, DPoP và public adapter local.
 - Người dùng đã vào được workspace bằng tài khoản Tide thật. Chưa chứng minh đầy đủ luồng ký policy, mã hóa và chia sẻ giữa hai người trên network thật.
@@ -84,7 +84,7 @@ Operator và người phê duyệt Tide là hai quyền khác nhau. Một link m
 5. Draft mở trong review room; nội dung chỉ được giải mã cho người có quyền.
 6. Draft bị khóa phải có lý do và hướng tiếp theo, không hiển thị như một card không phản hồi.
 
-### D. Mời cộng tác viên — đề xuất cần chốt phạm vi
+### D. Mời cộng tác viên — link một lần theo draft đã chọn
 
 1. Owner chọn draft muốn chia sẻ và tạo link mời có thời hạn.
 2. Người nhận mở link, đăng nhập/đăng ký qua trình duyệt và xác nhận nhận lời mời.
@@ -94,7 +94,7 @@ Operator và người phê duyệt Tide là hai quyền khác nhau. Một link m
 6. Link hết hạn, đã dùng hoặc bị hủy phải có trạng thái rõ ràng; cùng một link không bị nhận đồng thời bởi nhiều tài khoản.
 7. Gỡ lời mời chặn các yêu cầu API tiếp theo. Không tuyên bố việc này xóa dữ liệu đã đọc hoặc vô hiệu ngay policy đã sao chép còn hạn.
 
-Đề xuất ban đầu: link dùng một lần, mời vào các draft được chọn. Việc mời toàn project và tự cấp quyền cho draft mới chưa được chốt.
+Đã chốt: link dùng một lần, mời vào các draft được chọn. Draft upload sau đó không tự động được chia sẻ.
 
 ### E. Review
 
@@ -104,21 +104,21 @@ Operator và người phê duyệt Tide là hai quyền khác nhau. Một link m
 4. Reviewer không sửa metadata/project hoặc upload bản gốc của owner.
 5. Thử đổi ID, dùng lời mời sai người hoặc sai draft đều bị từ chối ở backend; kiểm chứng thêm việc network Tide từ chối policy sai phạm vi.
 
-## 6. Điểm cần chốt: ai ký policy cho thành viên thường?
+## 6. Đã chốt: admin nhóm ký policy trong app
 
-Quyết định mọi thành viên được tạo project không đồng nghĩa mọi thành viên được làm Tide realm admin. Code hiện tại chưa giải quyết sự khác biệt này.
+Quyết định mọi thành viên được tạo project không đồng nghĩa mọi thành viên được làm Tide realm admin. Bản triển khai dùng vai trò member theo owner/project và tách canSign của admin nhóm.
 
-**Phương án đề xuất cho demo:** có hàng chờ phê duyệt trong app. Owner gửi yêu cầu cho chính draft của mình; người quản trị nhóm ký bằng phiên Tide của họ trong trình duyệt. Thành viên thường chỉ dùng CreatorRoom. Mọi thao tác chờ ký đều có trạng thái và người chịu trách nhiệm rõ ràng.
+**Phương án đã chốt cho demo:** có hàng chờ phê duyệt trong app. Owner gửi yêu cầu cho chính draft của mình; người quản trị nhóm ký bằng phiên Tide của họ trong trình duyệt. Thành viên thường chỉ dùng CreatorRoom. Mọi thao tác chờ ký đều có trạng thái và người chịu trách nhiệm rõ ràng.
 
 **Phương án trải nghiệm tự phục vụ:** Creator tự duyệt trong phạm vi project của mình. Chỉ triển khai sau khi xác minh Tide hỗ trợ cách ủy quyền/policy phù hợp. Không hứa chức năng này đã có; không thay bằng cách cho mọi người quyền quản trị toàn realm, ký thay bằng mật khẩu admin trên server hoặc viết API Tide giả.
 
-Đây là quyết định kiến trúc cần thảo luận trước khi code phần chia sẻ nhiều owner.
+Người dùng đã đồng ý phương án admin nhóm duyệt trong app. Phương án tự phục vụ là hướng mở rộng, không thuộc lần triển khai này.
 
 ## 7. Chạy cùng máy và nhiều máy
 
 - Cùng máy: các tài khoản dùng profile trình duyệt riêng để kiểm thử Tide thật. Demo identity switch chỉ dành cho local simulation.
 - Nhiều máy: một app server và một TideCloak server dùng chung; người dùng nhận URL có thể truy cập từ máy của họ.
-- Đề xuất cho hackathon: HTTPS qua domain/tunnel tới hạ tầng hiện có. Cần chốt cách công khai trước khi triển khai; không tự chuyển realm local sang một dịch vụ hosting khác.
+- Đã chốt: HTTPS tunnel tới máy hiện tại cho bản dùng chung; giữ realm Docker local, không chuyển realm sang hosting khác.
 - Bản dùng chung cần HTTPS và origin/issuer/redirect URI/client-origin-auth phù hợp. Chỉ đổi localhost thành địa chỉ IP hoặc bật `0.0.0.0` chưa đủ để bảo đảm đăng nhập và WebCrypto hoạt động.
 - Một deployment dùng URL chuẩn nhất quán. Không tự dựng URL xác thực từ header Host không đáng tin.
 - Docker, cấu hình admin và mật khẩu chỉ ở phía vận hành. Token/key/adapter thực tế và tác phẩm riêng không được commit lên repo public.
@@ -176,10 +176,26 @@ Không tự đánh dấu tính năng hoàn tất khi mới có UI, mock hoặc t
 Chỉ hỏi các quyết định sản phẩm còn thiếu; tự xử lý lựa chọn kỹ thuật thông thường.
 ```
 
-## 11. Ba câu hỏi đang chờ chốt
+## 11. Quyết định được xác nhận trong chat
 
-1. **Phê duyệt Tide:** chấp nhận admin nhóm duyệt trong app cho demo, hay yêu cầu Creator tự duyệt trong phạm vi project và dành thời gian xác minh cách ủy quyền?
-2. **Phạm vi mời:** mời theo các draft được chọn, hay toàn project; nếu toàn project thì draft upload sau này có tự được chia sẻ không?
-3. **URL dùng chung:** dùng HTTPS tunnel tới máy hiện tại, hay nhóm đã có domain/server để triển khai?
+Người dùng đã đồng ý cả ba đề xuất và yêu cầu cập nhật brief, triển khai và đẩy repo:
 
-Các đề xuất ở mục 5–7 chưa thay thế câu trả lời của người dùng. Không bật tunnel, đổi quyền realm hoặc thay mô hình phân quyền chỉ vì file này liệt kê một phương án.
+1. Admin nhóm duyệt policy ngay trong app; thành viên thường không cần quyền admin hoặc console.
+2. Link mời dùng một lần, giới hạn các draft được chọn; draft mới không tự chia sẻ.
+3. HTTPS tunnel tới máy hiện tại để dùng trên cả máy chủ demo và máy khác.
+
+Việc tạo tunnel và cấu hình bản dùng chung đã được cho phép. Các giới hạn network Tide, HTTPS origin và phê duyệt bằng tài khoản thật phải được kiểm tra và báo đúng kết quả.
+
+## 12. Cập nhật sau triển khai và quyết định hoãn tunnel
+
+Người dùng đã chọn giữ bản local hoạt động trước; hoàn tất tunnel sau khi đổi mạng. Cloudflare đã báo kết nối nhưng hostname trả NXDOMAIN trên DNS công khai và kết nối edge sau đó timeout; SSH tunnel thay thế cũng timeout. Cấu hình local đã được khôi phục, không thay DNS/hosts của máy.
+
+Code đã bổ sung project room, profile ứng dụng, quyền theo owner, link mời một lần, owner xác nhận người nhận, queue ký policy và giao diện Approvals. Bộ test API/DPoP/proxy có 16 bài; browser demo có 3 bài. Test dùng fixture policy không thay thế bằng chứng VVK/network thật.
+
+Phần cùng máy dùng các profile browser riêng. Luồng ký policy và mã hóa giữa tài khoản Tide thật cần người quản trị tương tác với enclave để nghiệm thu. Code nhiều máy và script kiểm tra DNS/HTTP trước đổi cấu hình đã chuẩn bị; chưa đánh dấu HTTPS đa máy hoàn tất.
+
+Giới hạn công khai đã thu hẹp: tunnel không chuyển tiếp bất kỳ `/admin/` hoặc master-realm endpoint nào. Admin duyệt từ workspace localhost trên máy chủ demo; thao tác với broker admin đi trực tiếp qua loopback bằng token/DPoP của chính admin.
+
+Người dùng chọn tự kiểm thử Tide thật sau. Không chờ thao tác enclave để đẩy các thay đổi local đã kiểm thử; không đánh dấu checklist network là hoàn tất. Xem `docs/SHARING.md` cho thao tác local và kế hoạch khôi phục tunnel.
+
+Kiểm tra cuối phát hiện realm tắt self-registration. Đã thêm nút Create account qua SDK, bật default required action liên kết Tide và tạo đúng request `setRegistrationAllowed=true`. Request này cần admin nhóm ký tại Approvals/Tide governance; tài khoản mới chưa tự đăng ký được trước khi duyệt. Không tự ký thay người dùng.

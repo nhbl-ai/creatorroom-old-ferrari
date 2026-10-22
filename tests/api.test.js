@@ -191,10 +191,10 @@ test("roles cannot be supplied in headers or elevated through write routes", asy
       await request("/projects", {
         cookie: reviewer,
         method: "POST",
-        body: { title: "Unauthorized" },
+        body: { title: "Reviewer owns a separate project" },
       })
     ).status,
-    403,
+    201,
   );
   assert.equal(
     (
@@ -425,7 +425,7 @@ test("Tide mode verifies actual JWT signatures, issuer, client, expiry and role;
   assert.equal(
     (await request("/me", { token: token({ realm_access: { roles: [] } }) }))
       .status,
-    403,
+    200,
   );
   assert.equal(
     (await request("/me", { token: token({ cnf: { jkt: "bound-token" } }) }))

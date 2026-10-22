@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import express from "express";
 import { resolve } from "node:path";
+import { installBrokerProxy } from "./shared.js";
 import { createApp } from "./app.js";
 import { createStore } from "./store.js";
 import { loadConfig } from "./config.js";
@@ -8,6 +9,7 @@ import { loadConfig } from "./config.js";
 const config = await loadConfig();
 const store = await createStore(config.dataPath);
 const app = createApp({ config, store });
+installBrokerProxy(app, config);
 const server = createServer(app);
 let vite;
 if (config.production) {

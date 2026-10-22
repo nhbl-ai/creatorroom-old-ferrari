@@ -17,6 +17,7 @@ export async function initialiseAuth(config) {
       redirectUri: `${window.location.origin}/`,
       silentCheckSsoRedirectUri: `${window.location.origin}/silent-check-sso.html`,
       checkLoginIframe: false,
+      responseMode: "query",
       useDPoP: { mode: "strict", alg: "ES256" },
     });
     if (initError)
@@ -25,6 +26,15 @@ export async function initialiseAuth(config) {
       );
   })();
   await initialisation;
+  const returnTo = sessionStorage.getItem("creatorroom.returnTo");
+  if (
+    service.isLoggedIn() &&
+    returnTo &&
+    /^#\/(invite|project)\//.test(returnTo)
+  ) {
+    sessionStorage.removeItem("creatorroom.returnTo");
+    window.location.hash = returnTo;
+  }
 }
 
 export async function api(path, options = {}) {
@@ -59,7 +69,19 @@ export function send(path, body, method = "POST") {
 
 export async function login() {
   if (!service) throw new Error("TideCloak is not configured.");
+  if (/^#\/(invite|project)\//.test(window.location.hash))
+    sessionStorage.setItem("creatorroom.returnTo", window.location.hash);
   return service.doLogin();
+}
+
+// Use the installed SDK registration route; never collect passwords in CreatorRoom.
+export async function register() {
+  if (!service) throw new Error("TideCloak is not configured.");
+  if (/^#\/(invite|project)\//.test(window.location.hash))
+    sessionStorage.setItem("creatorroom.returnTo", window.location.hash);
+  return service.getTideCloakClient().register({
+    redirectUri: `${window.location.origin}/`,
+  });
 }
 
 export async function logout() {
@@ -70,4 +92,9 @@ export async function logout() {
 export function tideService() {
   if (!service?.isLoggedIn()) throw new Error("Sign in with TideCloak first.");
   return service;
+}
+
+export async function refreshSession() {
+  if (configuration?.mode === "tide") await service.forceUpdateToken();
+  return (await api("/me")).user;
 }

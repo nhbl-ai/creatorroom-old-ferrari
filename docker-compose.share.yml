@@ -1,0 +1,6 @@
+# Shared member login only; the app proxy refuses all /admin paths.
+services:
+  tidecloak:
+    environment:
+      KC_HOSTNAME: ${TIDE_PUBLIC_ORIGIN:?Set the HTTPS tunnel origin in .env.share.local}
+      KC_PROXY_HEADERS: xforwarded

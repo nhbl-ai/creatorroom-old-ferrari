@@ -26,7 +26,15 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { api, initialiseAuth, login, logout, send } from "./lib/api.js";
+import {
+  api,
+  initialiseAuth,
+  login,
+  register,
+  logout,
+  send,
+  refreshSession,
+} from "./lib/api.js";
 import {
   decryptPayload,
   encryptPayload,
@@ -35,6 +43,13 @@ import {
 } from "./lib/crypto.js";
 import { signInvitation } from "./lib/tide.js";
 import { sampleFile } from "./lib/samples.js";
+import {
+  ProjectRoom,
+  InvitationPage,
+  Approvals,
+} from "./components/Collaboration.jsx";
+import { navigate, useRoute } from "./lib/routing.js";
+import { ensureCryptoRoles } from "./lib/tide-admin.js";
 import { ProfileOnboarding } from "./components/ProfileOnboarding.jsx";
 
 const formatSize = (bytes) =>
@@ -97,7 +112,7 @@ function Modal({ title, children, onClose, wide = false }) {
   );
 }
 
-function Landing({ config, error, busy, onLogin, onIdentity }) {
+function Landing({ config, error, busy, onLogin, onRegister, onIdentity }) {
   return (
     <div className="landing">
       <header>
@@ -150,14 +165,28 @@ function Landing({ config, error, busy, onLogin, onIdentity }) {
               </p>
             </div>
           ) : config.mode === "tide" ? (
+            <div className="landing-auth-actions">
             <button
               className="button primary"
-              disabled={busy}
+              disabled={
+                busy ||
+                Boolean(
+                  config.sharedOrigin &&
+                    window.location.origin === config.sharedOrigin &&
+                    !config.sharedReady,
+                )
+              }
               onClick={onLogin}
             >
               <ShieldCheck size={17} /> Continue with TideCloak{" "}
               <ArrowRight size={17} />
             </button>
+            <button
+              className="button secondary"
+              disabled={busy || Boolean(config.sharedOrigin && window.location.origin === config.sharedOrigin && !config.sharedReady)}
+              onClick={onRegister}
+            >Create account</button>
+            </div>
           ) : (
             <div className="setup-box">
               <strong>Your studio is ready for setup.</strong>
@@ -170,6 +199,32 @@ function Landing({ config, error, busy, onLogin, onIdentity }) {
                 The app will not substitute a demo login for a Tide session.
               </span>
             </div>
+          )}
+          {config.sharedOrigin &&
+            window.location.origin === config.sharedOrigin &&
+            !config.sharedReady && (
+              <div className="setup-box">
+                <strong>
+                  Shared sign-in is waiting for the host approver.
+                </strong>
+                <p>
+                  The host must enable this address in Approvals. No
+                  installation is needed on your device.
+                </p>
+                <button
+                  className="button secondary"
+                  onClick={() => window.location.reload()}
+                >
+                  Check again
+                </button>
+              </div>
+            )}
+          {config.mode === "tide" && (
+            <p className="small-note">
+              New here? Create your account and link Tide in your browser.
+              Nothing to install. Everyone can own projects and review invited drafts.
+              If registration is unavailable, ask the host to finish account setup.
+            </p>
           )}
           {error && (
             <p className="error-message" role="alert">
@@ -290,7 +345,15 @@ function CreateProject({ onClose, onCreate, busy, error }) {
   );
 }
 
-function UploadDraft({ projects, onClose, onUpload, busy, message, error }) {
+function UploadDraft({
+  projects,
+  onClose,
+  onUpload,
+  busy,
+  message,
+  error,
+  resumeAsset,
+}) {
   const [file, setFile] = useState(null);
   return (
     <Modal title="A new draft, kept private" onClose={onClose}>
@@ -306,6 +369,7 @@ function UploadDraft({ projects, onClose, onUpload, busy, message, error }) {
               projectId: form.get("projectId"),
               title: form.get("title") || file.name,
               file,
+              existingAsset: resumeAsset,
             });
         }}
       >
@@ -323,6 +387,7 @@ function UploadDraft({ projects, onClose, onUpload, busy, message, error }) {
           Draft title
           <input
             name="title"
+            defaultValue={resumeAsset?.title || ""}
             placeholder="e.g. Poster exploration — v01"
             required
             maxLength={100}
@@ -435,6 +500,7 @@ function AssetRoom({
     let cancelled = false;
     mounted.current = true;
     (async () => {
+      if (config.mode === "tide") await refreshSession();
       if (isOwner) {
         const result = await api(`/assets/${asset.id}/grants`);
         if (!cancelled) setGrants(result.grants);
@@ -496,17 +562,33 @@ function AssetRoom({
         ? "Approve the invitation in the Tide window…"
         : "Sharing this draft…",
       async () => {
-        const policyBase64 = await signInvitation({
-          config,
-          user,
-          recipient,
-          recordId: asset.id,
-          hours: Number(hours),
-        });
-        await send(`/assets/${asset.id}/grants`, {
-          personId: recipient.id,
-          policyBase64,
-        });
+        if (config.mode === "tide") {
+          const { approval } = await send(
+            `/assets/${asset.id}/policy-requests`,
+            { personId: recipient.id, hours: Number(hours) },
+          );
+          if (!user.canSign) {
+            notify(
+              "Access request sent. The approver will sign this invitation.",
+            );
+            onChanged();
+            return;
+          }
+          await ensureCryptoRoles(config, recipient.id);
+          const policyBase64 = await signInvitation({
+            config,
+            user,
+            recipient,
+            recordId: asset.id,
+            hours: Number(hours),
+          });
+          await send(`/approvals/${approval.id}/approve`, { policyBase64 });
+        } else {
+          await send(`/assets/${asset.id}/grants`, {
+            personId: recipient.id,
+            policyBase64: null,
+          });
+        }
         const result = await api(`/assets/${asset.id}/grants`);
         if (!mounted.current) return;
         setGrants(result.grants);
@@ -680,7 +762,7 @@ function AssetRoom({
                   </option>
                   {people.map((person) => (
                     <option key={person.id} value={person.id}>
-                      {person.name}
+                      {person.name} · {person.id.slice(-8)}
                     </option>
                   ))}
                 </select>
@@ -899,6 +981,8 @@ function StorageInspector({ records, onTryOpen }) {
 }
 
 export default function App() {
+  const route = useRoute();
+  const [resumeAsset, setResumeAsset] = useState(null);
   const [config, setConfig] = useState(null);
   const [user, setUser] = useState(null);
   const [projects, setProjects] = useState([]);
@@ -914,6 +998,16 @@ export default function App() {
   const [busy, setBusy] = useState("");
   const [booting, setBooting] = useState(true);
   const sessionEpoch = useRef(0);
+  useEffect(() => {
+    const section = route.slice(1);
+    setView(
+      ["shared", "activity", "storage", "approvals"].includes(section)
+        ? section
+        : "projects",
+    );
+    setSelectedAsset(null);
+    setModal(null);
+  }, [route]);
 
   const refresh = useCallback(
     async (person = user) => {
@@ -922,7 +1016,7 @@ export default function App() {
       const [workspace, activity, directory, storage] = await Promise.all([
         api("/projects"),
         api("/activity"),
-        person.role === "creator"
+        person.role !== "operator"
           ? api("/people")
           : Promise.resolve({ people: [] }),
         person.role === "operator"
@@ -958,6 +1052,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!user) return;
+    const timer = setInterval(() => refresh().catch(() => {}), 8000);
+    return () => clearInterval(timer);
+  }, [user?.id, refresh]);
+
+  useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(null), 8500);
     return () => clearTimeout(timer);
@@ -989,34 +1089,62 @@ export default function App() {
       const { user: person } = await send("/demo/session", { personId });
       setUser(person);
       setView(person.role === "operator" ? "storage" : "projects");
+      if (!route.startsWith("/invite/"))
+        navigate(person.role === "operator" ? "/storage" : "/projects");
       await refresh(person);
     });
   }
 
-  async function upload({ projectId, title, file }) {
+  async function upload({ projectId, title, file, existingAsset }) {
     if (file.size < 1 || file.size > config.maxFileBytes)
       throw new Error("Choose a file between 1 byte and 1 MB.");
     const mime = file.type || (file.name.endsWith(".txt") ? "text/plain" : "");
     if (!["image/png", "image/jpeg", "image/webp", "text/plain"].includes(mime))
       throw new Error("Use a PNG, JPEG, WebP or TXT file.");
-    const { asset } = await send(`/projects/${projectId}/assets`, {
-      title,
-      mime,
-      size: file.size,
-    });
-    try {
-      setBusy(
-        config.mode === "tide"
-          ? "Approve your draft policy in the Tide window…"
-          : "Encrypting in your browser…",
+    if (
+      existingAsset &&
+      (existingAsset.mime !== mime || existingAsset.size !== file.size)
+    )
+      throw new Error(
+        "Choose a file with the same type and size as the reserved draft, or discard it and create a new draft.",
       );
-      const policyBase64 = await signInvitation({
-        config,
-        user,
-        recipient: user,
-        recordId: asset.id,
-        hours: 24,
-      });
+    const asset =
+      existingAsset ||
+      (
+        await send(`/projects/${projectId}/assets`, {
+          title,
+          mime,
+          size: file.size,
+        })
+      ).asset;
+    try {
+      let policyBase64 = null;
+      if (config.mode === "tide") {
+        const prior = await api(`/assets/${asset.id}/upload-policy`);
+        policyBase64 = prior.policyBase64;
+        if (prior.status !== "approved") {
+          const { approval } = await send(
+            `/assets/${asset.id}/policy-requests`,
+            { hours: 24 },
+          );
+          if (!user.canSign) return { ...asset, pending: true };
+          setBusy("Approve the draft policy in the Tide window…");
+          await ensureCryptoRoles(config, user.id);
+          policyBase64 = await signInvitation({
+            config,
+            user,
+            recipient: user,
+            recordId: asset.id,
+            hours: 24,
+          });
+          await send(`/approvals/${approval.id}/approve`, { policyBase64 });
+        }
+      }
+      setBusy("Encrypting in your browser…");
+      if (config.mode === "tide") {
+        const updated = await refreshSession();
+        setUser(updated);
+      }
       const envelope = await encryptPayload(
         {
           kind: "asset",
@@ -1036,7 +1164,7 @@ export default function App() {
         "PUT",
       );
     } catch (failure) {
-      await send(`/assets/${asset.id}`, {}, "DELETE").catch(() => {});
+      await refresh().catch(() => {});
       throw failure;
     }
     return asset;
@@ -1099,6 +1227,17 @@ export default function App() {
         )}
       </div>
     );
+  if (route.startsWith("/invite/"))
+    return (
+      <InvitationPage
+        token={route.split("/")[2]}
+        user={user}
+        config={config}
+        onIdentity={switchIdentity}
+        onLogin={() => perform("Connecting…", login)}
+        onRegister={() => perform("Opening registration…", register)}
+      />
+    );
   if (!user)
     return (
       <Landing
@@ -1107,9 +1246,18 @@ export default function App() {
         busy={Boolean(busy)}
         onIdentity={switchIdentity}
         onLogin={() => perform("Connecting…", login)}
+        onRegister={() => perform("Opening registration…", register)}
       />
     );
 
+  const projectId = route.startsWith("/project/") ? route.split("/")[2] : null;
+  const activeProject = projects.find((p) => p.id === projectId);
+  function openAsset(asset) {
+    if (!asset.hasContent && asset.ownerId === user.id) {
+      setResumeAsset(asset);
+      setModal("upload");
+    } else setSelectedAsset(asset);
+  }
   const assets = projects.flatMap((project) => project.assets);
   const ownedProjects = projects.filter(
     (project) => project.ownerId === user.id,
@@ -1136,6 +1284,11 @@ export default function App() {
     },
     { id: "shared", name: "Shared with me", icon: Users },
     { id: "activity", name: "Activity", icon: Clock3 },
+    {
+      id: "approvals",
+      name: user.canSign ? "Approvals" : "My requests",
+      icon: ShieldCheck,
+    },
     ...(user.role === "operator"
       ? [{ id: "storage", name: "Storage inspector", icon: Database }]
       : []),
@@ -1160,6 +1313,7 @@ export default function App() {
               key={item.id}
               className={`nav-item ${view === item.id ? "active" : ""}`}
               onClick={() => {
+                navigate(`/${item.id}`);
                 setView(item.id);
                 setQuery("");
               }}
@@ -1213,6 +1367,20 @@ export default function App() {
               <span />
               {config.mode === "demo" ? "LOCAL DEMO" : "TIDE CONNECTED"}
             </span>
+            <button
+              className="text-button refresh-session"
+              disabled={Boolean(busy)}
+              onClick={() =>
+                perform("Refreshing permissions…", async () => {
+                  const person = await refreshSession();
+                  setUser(person);
+                  await refresh(person);
+                  setNotice("Session and access refreshed.");
+                })
+              }
+            >
+              Refresh access
+            </button>
             {config.mode === "demo" ? (
               <label className="identity-switch">
                 <span className="sr-only">Demo identity</span>
@@ -1224,7 +1392,8 @@ export default function App() {
                 >
                   {config.demoPeople.map((person) => (
                     <option key={person.id} value={person.id}>
-                      {person.name} · {person.role}
+                      {person.name} ·{" "}
+                      {person.role === "operator" ? "operator" : "member"}
                     </option>
                   ))}
                 </select>
@@ -1239,6 +1408,13 @@ export default function App() {
                 {user.name}
               </button>
             )}
+            <button
+              className="text-button"
+              aria-label="Edit profile"
+              onClick={() => setModal("profile")}
+            >
+              Profile
+            </button>
             <span className={`avatar avatar-${user.role}`}>
               {initials(user.name)}
             </span>
@@ -1298,7 +1474,7 @@ export default function App() {
                       : "Unreleased work. Thoughtful feedback. Just the right people."}
               </p>
             </div>
-            {user.role === "creator" && (
+            {user.role !== "operator" && (
               <button
                 className="button primary"
                 disabled={Boolean(busy)}
@@ -1356,7 +1532,41 @@ export default function App() {
               <span className="stat-detail">By invitation</span>
             </div>
           </div>
-          {view === "storage" ? (
+          {projectId ? (
+            activeProject ? (
+              <ProjectRoom
+                project={activeProject}
+                user={user}
+                busy={Boolean(busy)}
+                onRefresh={refresh}
+                onOpen={openAsset}
+                onUpload={(asset) => {
+                  setResumeAsset(asset || null);
+                  setModal("upload");
+                }}
+                onEdit={async (values) => {
+                  await send(`/projects/${activeProject.id}`, values, "PATCH");
+                  await refresh();
+                }}
+              />
+            ) : (
+              <section className="empty-state">
+                <h2>Project not available</h2>
+                <p>
+                  The project may no longer exist or has not been shared with
+                  this account.
+                </p>
+                <button
+                  className="button secondary"
+                  onClick={() => navigate("/projects")}
+                >
+                  Back to projects
+                </button>
+              </section>
+            )
+          ) : view === "approvals" ? (
+            <Approvals config={config} user={user} onChanged={refresh} />
+          ) : view === "storage" ? (
             <StorageInspector
               records={records}
               onTryOpen={(id) =>
@@ -1409,11 +1619,14 @@ export default function App() {
                         onChange={(event) => setQuery(event.target.value)}
                       />
                     </label>
-                    {user.role === "creator" && ownedProjects.length > 0 && (
+                    {user.role !== "operator" && ownedProjects.length > 0 && (
                       <button
                         className="button secondary upload-button"
                         disabled={Boolean(busy)}
-                        onClick={() => setModal("upload")}
+                        onClick={() => {
+                          setResumeAsset(null);
+                          setModal("upload");
+                        }}
                       >
                         <Upload size={15} /> Upload draft
                       </button>
@@ -1428,9 +1641,13 @@ export default function App() {
                         <div className="project-content">
                           <div className="project-title-row">
                             <h3>{project.title}</h3>
-                            <span className="project-menu">
+                            <button
+                              className="project-open project-menu"
+                              aria-label={`Open project ${project.title}`}
+                              onClick={() => navigate(`/project/${project.id}`)}
+                            >
                               <Folder size={16} />
-                            </span>
+                            </button>
                           </div>
                           <p>
                             {project.description ||
@@ -1443,7 +1660,7 @@ export default function App() {
                                   key={asset.id}
                                   aria-label={`Open ${asset.title}`}
                                   className="asset-row"
-                                  onClick={() => setSelectedAsset(asset)}
+                                  onClick={() => openAsset(asset)}
                                 >
                                   <span
                                     className={`asset-icon ${asset.canRead ? "available" : ""}`}
@@ -1501,11 +1718,11 @@ export default function App() {
                     <p>
                       {query
                         ? "Try another search."
-                        : user.role === "creator"
+                        : user.role !== "operator"
                           ? "Create a project, or start with two original sample designs."
                           : "Ask a creator to upload a draft and invite you."}
                     </p>
-                    {!query && user.role === "creator" && (
+                    {!query && user.role !== "operator" && (
                       <button
                         className="button primary"
                         disabled={Boolean(busy)}
@@ -1599,8 +1816,9 @@ export default function App() {
           onClose={() => setModal(null)}
           onCreate={(values) =>
             perform("Creating your room…", async () => {
-              await send("/projects", values);
+              const { project } = await send("/projects", values);
               await refresh();
+              navigate(`/project/${project.id}`);
               setModal(null);
               setNotice("Your project is ready. Add its first private draft.");
             })
@@ -1609,24 +1827,33 @@ export default function App() {
       )}
       {modal === "upload" && (
         <UploadDraft
-          projects={ownedProjects}
+          projects={
+            activeProject?.ownerId === user.id
+              ? [activeProject]
+              : resumeAsset
+                ? ownedProjects.filter((p) => p.id === resumeAsset.projectId)
+                : ownedProjects
+          }
+          resumeAsset={resumeAsset}
           busy={Boolean(busy)}
           message={busy}
           error={error}
           onClose={() => setModal(null)}
           onUpload={(values) =>
             perform("Preparing your draft…", async () => {
-              await upload(values);
+              const result = await upload(values);
               await refresh();
               setModal(null);
               setNotice(
-                "Draft encrypted and uploaded. Open it to invite a reviewer.",
+                result.pending
+                  ? "Request sent to the approver. Your file has not been uploaded. Return to this draft after approval and choose the file again."
+                  : "Draft encrypted and uploaded. Open it to invite a reviewer.",
               );
             })
           }
         />
       )}
-      {config.mode === "tide" && (
+      {user && (
         <ProfileOnboarding
           config={config}
           user={user}

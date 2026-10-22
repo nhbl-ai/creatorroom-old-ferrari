@@ -106,9 +106,17 @@ export function createAuthenticator(config, verify = verifyTideCloakToken) {
         match[1].toLowerCase() === "dpop"
       ) {
         try {
+          const expectedOrigin = req.headers.host
+            ? (config.origins || [config.origin]).find(
+                (origin) => new URL(origin).host === req.headers.host,
+              )
+            : config.origin;
+          if (!expectedOrigin) throw new Error("Unknown request host.");
           await verifyDpop(
             {
-              url: new URL(req.originalUrl, config.origin).href,
+              url:
+                expectedOrigin +
+                new URL(req.originalUrl, expectedOrigin).pathname,
               method: req.method,
               headers: { get: (name) => req.get(name) ?? null },
             },
@@ -131,15 +139,9 @@ export function createAuthenticator(config, verify = verifyTideCloakToken) {
         ...(payload.resource_access?.[config.adapter.resource]?.roles || []),
       ]);
       // Keep the operator persona separate, even if misconfigured with app roles.
-      const role = roles.has(APP_ROLES.operator)
-        ? "operator"
-        : roles.has(APP_ROLES.creator)
-          ? "creator"
-          : roles.has(APP_ROLES.reviewer)
-            ? "reviewer"
-            : null;
-      if (!role)
-        throw new HttpError(403, "Your account needs a CreatorRoom role.");
+      // An authenticated member can own a project and review someone else's.
+      // Operator remains an explicit realm role; request bodies cannot assign it.
+      const role = roles.has(APP_ROLES.operator) ? "operator" : "member";
       return {
         id: payload.sub,
         name: String(
@@ -150,7 +152,12 @@ export function createAuthenticator(config, verify = verifyTideCloakToken) {
         ).slice(0, 100),
         role,
         canSign:
-          role === "creator" && governanceRoles.includes("tide-realm-admin"),
+          role !== "operator" && governanceRoles.includes("tide-realm-admin"),
+        cryptoReady: [
+          "_tide_enabled",
+          "_tide_encryptor",
+          "_tide_decryptor",
+        ].every((role) => roles.has(role)),
         tideUserKey:
           typeof payload.tideuserkey === "string" ? payload.tideuserkey : "",
       };
